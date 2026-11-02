@@ -9,6 +9,7 @@ export const MAPS = {
   pvp: '/maps/fps_map_pvp_pve_games.glb',
   brutalist: '/maps/brutalist_concrete_map_free_retro_prop.glb',
   warface: '/maps/warface_pvp_map_fps.glb',
+  offense: '/maps/lethal_company_offense_map.glb',
 }
 
 // 맵마다 크기/스폰 위치가 다릅니다. GLB 맵은 게임 중 F4(내 위치=플레이어 스폰) / F3(내 위치=봇 스폰)로
@@ -18,6 +19,7 @@ export const MAP_SETTINGS = {
   pvp: { scale: 1, spawn: [0, 5, 0], botSpawn: [0, 5, -15] },
   brutalist: { scale: 1, spawn: [0, 5, 0], botSpawn: [0, 5, -15] },
   warface: { scale: 1, spawn: [0, 5, 0], botSpawn: [0, 5, -15] },
+  offense: { scale: 1, spawn: [0, 5, 0], botSpawn: [0, 5, -15] },
 }
 
 const mapKey = MAPS[params.get('map')] !== undefined ? params.get('map') : 'arena'
