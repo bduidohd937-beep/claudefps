@@ -1,7 +1,7 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useRapier } from '@react-three/rapier'
-import { CFG, MATCH, SPAWNS, TRAINING, AUTO_ENTER, START_LEVEL, saveSpawn, SPAWN_MANUAL } from '../config'
+import { CFG, MATCH, SPAWNS, TRAINING, AUTO_ENTER, START_LEVEL, DYNAMIC_SPAWNS, saveSpawn, SPAWN_MANUAL } from '../config'
 import { live, refs, useGame } from '../store'
 import { enemies } from '../enemies'
 import { cam, on } from '../fx'
@@ -10,6 +10,7 @@ import { cam, on } from '../fx'
 export default function Match() {
   const camera = useThree((s) => s.camera)
   const { world, rapier } = useRapier()
+  const lastSpawns = useRef({ player: null, bot: null })
 
   const findSafeSpawn = useMemo(() => {
     const ray = new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 })
@@ -34,7 +35,7 @@ export default function Match() {
       return !cast([x, groundY + 0.05, z], [0, 1, 0], height + 0.15)
     }
 
-    return (requested, avoid = null, maxRing = 8) => {
+    const resolve = (requested, avoid = null, maxRing = 8, minimumDistance = CFG.spawnMinDistance) => {
       // 요청한 좌표가 허공이면 맵 실제 영역 중앙에서도 바닥을 검색.
       const bounds = refs.mapBounds
       const centers = [requested]
@@ -48,7 +49,7 @@ export default function Match() {
           const angle = (i / count) * Math.PI * 2
           const x = center[0] + Math.cos(angle) * ring * 2
           const z = center[2] + Math.sin(angle) * ring * 2
-          if (avoid && Math.hypot(x - avoid[0], z - avoid[2]) < CFG.spawnMinDistance) continue
+          if (avoid && Math.hypot(x - avoid[0], z - avoid[2]) < minimumDistance) continue
           const top = Math.max(center[1] + 10, CFG.spawnProbeTop, (bounds?.max[1] ?? 0) + 10)
           const depth = Math.max(CFG.spawnProbeDepth, top - (bounds?.min[1] ?? -20) + 20)
           const floor = cast([x, top, z], [0, -1, 0], depth, true)
@@ -63,6 +64,32 @@ export default function Match() {
       console.warn('[spawn] 지면을 찾지 못했습니다. 수동 스폰 편집기로 전환합니다.', requested)
       return null
     }
+
+    // 기존에 찾은 안전 스폰 주변의 같은 높이 지면만 후보로 삼는다.
+    // 넓은 맵 전체를 무작위로 찍으면 지붕/허공/단절된 구역에 나타날 수 있어 금지.
+    resolve.randomNear = (base, avoid, previous, radius, minimumDistance) => {
+      if (!base) return null
+      const valid = []
+      for (let i = 0; i < 32; i++) {
+        const angle = Math.random() * Math.PI * 2
+        const distance = radius * (0.35 + Math.random() * 0.65)
+        const x = base[0] + Math.cos(angle) * distance
+        const z = base[2] + Math.sin(angle) * distance
+        if (avoid && Math.hypot(x - avoid[0], z - avoid[2]) < minimumDistance) continue
+        if (previous && Math.hypot(x - previous[0], z - previous[2]) < Math.min(2.5, radius * 0.4)) continue
+        const top = base[1] + 2.5
+        const hit = cast([x, top, z], [0, -1, 0], 6, true)
+        if (!hit || hit.normal.y < 0.72) continue
+        const floorY = top - hit.timeOfImpact
+        const centerY = floorY + CFG.capsuleHalfHeight + CFG.capsuleRadius + 0.05
+        // 다른 층이나 지붕은 다른 네비게이션 영역일 수 있으므로 제외.
+        if (Math.abs(centerY - base[1]) > 2.0) continue
+        if (!hasClearance(x, floorY, z)) continue
+        valid.push([x, centerY, z])
+      }
+      return valid.length ? valid[Math.floor(Math.random() * valid.length)] : null
+    }
+    return resolve
   }, [world, rapier])
 
   useEffect(() => {
@@ -70,14 +97,44 @@ export default function Match() {
     refs.snapSpawn = (pos) => findSafeSpawn(pos, null, 1)
     refs.resetRound = () => {
       const bounds = refs.mapBounds
-      const p = SPAWN_MANUAL.player
+      const span = bounds
+        ? Math.min(bounds.max[0] - bounds.min[0], bounds.max[2] - bounds.min[2])
+        : 20
+      // 큰 맵은 최대 12m, 작은 맵은 1.5m 범위에서만 위치를 바꿈.
+      const radius = Math.min(12, Math.max(1.5, span * 0.23))
+      const minimumDistance = Math.min(CFG.spawnMinDistance, Math.max(2.5, span * 0.33))
+      const basePlayer = SPAWN_MANUAL.player
         ? [...SPAWNS.player] : findSafeSpawn(SPAWNS.player)
-      const bp = SPAWN_MANUAL.bot
-        ? [...SPAWNS.bot] : findSafeSpawn(SPAWNS.bot, p)
+      const baseBot = SPAWN_MANUAL.bot
+        ? [...SPAWNS.bot] : findSafeSpawn(SPAWNS.bot, basePlayer, 8, minimumDistance)
+      let p = basePlayer
+      let bp = baseBot
+
+      // 고정 스폰은 언제든 로비의 옵션에서 선택할 수 있음.
+      // F6 수동 스폰은 매번 새로 검색할 중심점으로 유지됨.
+      if (DYNAMIC_SPAWNS && !TRAINING && p && bp) {
+        const shuffledPlayer = findSafeSpawn.randomNear(
+          p, bp, lastSpawns.current.player, radius, minimumDistance,
+        )
+        if (shuffledPlayer) p = shuffledPlayer
+        const shuffledBot = findSafeSpawn.randomNear(
+          bp, p, lastSpawns.current.bot, radius, minimumDistance,
+        )
+        if (shuffledBot) bp = shuffledBot
+      }
       const playerSpawn = p || (bounds
         ? [bounds.center[0], bounds.max[1] + 4, bounds.center[2]]
         : [...SPAWNS.player])
       const botSpawn = bp || [...SPAWNS.bot]
+      if (p && bp) {
+        lastSpawns.current = { player: [...p], bot: [...bp] }
+      }
+      if (DYNAMIC_SPAWNS && p && bp && !TRAINING) {
+        console.info('[spawn] 라운드별 랜덤 스폰', {
+          player: p.map((x) => Number(x.toFixed(2))),
+          bot: bp.map((x) => Number(x.toFixed(2))),
+        })
+      }
       if (!p) useGame.getState().setSpawnEditorOpen(true)
       refs.safePlayerSpawn = p
       refs.safeBotSpawn = bp
