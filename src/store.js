@@ -15,6 +15,14 @@ const readSens = () => {
   }
 }
 
+const savedCrosshair = (key, fallback) => {
+  try { return localStorage.getItem(key) || fallback } catch { return fallback }
+}
+const savedCrosshairMode = ['dot', 'cross', 'dynamic'].includes(savedCrosshair('claudefps.crosshair.mode', 'dynamic'))
+  ? savedCrosshair('claudefps.crosshair.mode', 'dynamic') : 'dynamic'
+const savedCrosshairColor = /^#[0-9a-f]{6}$/i.test(savedCrosshair('claudefps.crosshair.color', '#ffffff'))
+  ? savedCrosshair('claudefps.crosshair.color', '#ffffff') : '#ffffff'
+
 const now = () => performance.now() / 1000
 
 // React 리렌더가 필요한 UI 상태만 여기에 둡니다.
@@ -32,6 +40,18 @@ export const useGame = create((set, get) => ({
     set(open ? { spawnEditorOpen: true, tunerOpen: false } : { spawnEditorOpen: false })
     if (open) live.tuner = false
     if (open) refs.unlock?.()
+  },
+  crosshairMode: savedCrosshairMode,
+  crosshairColor: savedCrosshairColor,
+  setCrosshairMode: (mode) => {
+    if (!['dot', 'cross', 'dynamic'].includes(mode)) return
+    try { localStorage.setItem('claudefps.crosshair.mode', mode) } catch {}
+    set({ crosshairMode: mode })
+  },
+  setCrosshairColor: (color) => {
+    if (!/^#[0-9a-f]{6}$/i.test(color)) return
+    try { localStorage.setItem('claudefps.crosshair.color', color) } catch {}
+    set({ crosshairColor: color })
   },
   sensitivity: readSens(),
   lock: () => {}, // Controls 컴포넌트가 실제 함수로 교체
