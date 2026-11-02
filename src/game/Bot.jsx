@@ -643,6 +643,7 @@ export default function Bot() {
         listener: [camera.position.x, camera.position.y, camera.position.z],
         right: [tmp.cameraRight.x, tmp.cameraRight.y, tmp.cameraRight.z],
         gait,
+        occluded: !st.los,
         variant: tmp.footstepVariant++ % 2,
       })
       st.nextFootstep = t + FOOTSTEP_GAITS[gait].interval
