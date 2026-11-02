@@ -6,6 +6,7 @@ import { SHOP } from '../shop'
 import { on } from '../fx'
 import { initAudio } from '../audio'
 import SpawnEditor from './SpawnEditor'
+import WeaponTuner from './WeaponTuner'
 
 const STATE_LABEL = { stand: '정지', walk: '걷기', run: '달리기', crouch: '앉기', air: '공중' }
 
@@ -388,6 +389,7 @@ function Menu({ pause }) {
           <kbd>B</kbd><span>상점</span>
           <kbd>Esc</kbd><span>일시정지</span>
           <kbd>F6</kbd><span>스폰 좌표 편집</span>
+          <kbd>F2</kbd><span>무기 위치 직접 조정</span>
         </div>
 
         <SensSlider />
@@ -435,6 +437,7 @@ export default function HUD() {
   const phase = useGame((s) => s.phase)
   const shopOpen = useGame((s) => s.shopOpen)
   const spawnEditorOpen = useGame((s) => s.spawnEditorOpen)
+  const tunerOpen = useGame((s) => s.tunerOpen)
 
   // B키: 상점 토글 (포인터락이 풀려 있어도 동작해야 하므로 전역 리스너)
   useEffect(() => {
@@ -455,7 +458,7 @@ export default function HUD() {
   }, [])
 
   const playing = phase === 'buy' || phase === 'live' || phase === 'roundEnd'
-  const showPause = !locked && !shopOpen && !spawnEditorOpen && (phase === 'buy' || phase === 'live')
+  const showPause = !locked && !shopOpen && !spawnEditorOpen && !tunerOpen && (phase === 'buy' || phase === 'live')
   return (
     <>
       <DamageVignette />
@@ -471,6 +474,7 @@ export default function HUD() {
       {shopOpen && !spawnEditorOpen && (phase === 'buy' || phase === 'live') && <Shop />}
       <MatchEnd />
       <SpawnEditor />
+      <WeaponTuner />
     </>
   )
 }
