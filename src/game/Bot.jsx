@@ -221,7 +221,7 @@ export default function Bot() {
     strafe: 1, strafeUntil: 0, coverPos: null, coverUntil: 0, nextCover: 0,
     hurtAt: -9, stuckAt: 0, stuckX: 0, stuckZ: 0, unstuckUntil: 0, ux: 0, uz: 0, flashUntil: 0,
     lastKnown: null, heardAt: -9, investigateUntil: 0, nextHear: 0,
-    patrolGoal: null, nextPatrol: 0, nextHop: 0,
+    patrolGoal: null, nextPatrol: 0, nextHop: 0, avoidSign: 0, avoidUntil: 0,
   })
 
   // 레지스트리 등록 (플레이어 사격 판정이 사용)
@@ -283,7 +283,7 @@ export default function Bot() {
         burstLeft: 0, restUntil: 0, aimHead: false, coverPos: null, coverUntil: 0,
         nextCover: 0, hurtAt: -9, speed: 0, stuckAt: 0, unstuckUntil: 0,
         flashUntil: 0, lastKnown: null, heardAt: -9, investigateUntil: 0,
-        nextHear: 0, patrolGoal: null, nextPatrol: 0, nextHop: 0,
+        nextHear: 0, patrolGoal: null, nextPatrol: 0, nextHop: 0, avoidSign: 0, avoidUntil: 0,
       })
       if (b) {
         b.setEnabled(true)
@@ -545,8 +545,15 @@ export default function Bot() {
             const lf = probe(p.x, p.y - 0.2, p.z, lx, lz, 1.6)
             const rf = probe(p.x, p.y - 0.2, p.z, rx, rz, 1.6)
             const c2 = Math.cos(1.1), s2 = Math.sin(1.1)
-            if (lf >= rf) { const nx = dirx * c2 - dirz * s2; dirz = dirx * s2 + dirz * c2; dirx = nx }
-            else { const nx = dirx * c2 + dirz * s2; dirz = -dirx * s2 + dirz * c2; dirx = nx }
+            // Keep one wall-following side briefly, preventing rapid left/right oscillation.
+            if (t > st.avoidUntil) {
+              st.avoidSign = lf >= rf ? 1 : -1
+              st.avoidUntil = t + 1.25
+            }
+            const sign = st.avoidSign || 1
+            const nx = dirx * c2 - sign * dirz * s2
+            dirz = sign * dirx * s2 + dirz * c2
+            dirx = nx
           }
         }
         if (t - st.stuckAt > 1) {
