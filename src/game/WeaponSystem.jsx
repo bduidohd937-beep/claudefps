@@ -25,7 +25,8 @@ try {
 }
 const saveTune = () => { try { localStorage.setItem(TUNE_KEY, JSON.stringify(live.vmTune)) } catch {} }
 
-const canAct = () => live.locked && !live.dead && (live.phase === 'live' || TRAINING)
+const canAct = () => live.locked && !live.dead && (live.phase === 'live' || TRAINING) &&
+  (TRAINING || performance.now() / 1000 >= useGame.getState().spawnProtectionUntil)
 
 // ---------- 재장전 ----------
 function startReload() {
