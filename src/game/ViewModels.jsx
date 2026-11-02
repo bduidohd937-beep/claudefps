@@ -11,21 +11,21 @@ import { Rifle, Pistol, Knife } from './GunModels'
 export const VM = {
   rifle: {
     url: '/models/weapons/aks74u.glb',
-    pos: [0, 0, 0], scale: 1, rotY: 0,
+    pos: [0, 0, 0], scale: 1, rotY: 0, // V0.2 원본: 정상 표시된 소총 설정 유지
     muzzle: [0.0, -0.03, -1.0],
     clips: { idle: 'Fire_single', fire: 'Fire_single', reload: 'Reload_t', reloadEmpty: 'Reload_f', draw: 'Put_in', run: 'Fire_sprite' },
     fireSpeed: 1.8,
   },
   pistol: {
     url: '/models/weapons/pistol.glb',
-    pos: [0, 0, 0], scale: 1, rotY: 0,
+    pos: [0.24, -0.22, -0.58], scale: 0.4, rotY: 0,
     muzzle: [0.0, -0.03, -0.75],
     clips: { idle: 'Shot', fire: 'Shot', reload: 'Reloat_t', reloadEmpty: 'Reloat_f', run: 'Run', walk: 'Walk' },
     fireSpeed: 1.3,
   },
   knife: {
     url: '/models/weapons/knife.glb',
-    pos: [0, 0, 0], scale: 0.01, rotY: 0, // 이 GLB는 cm 단위
+    pos: [0.24, -0.20, -0.54], scale: 0.01, rotY: 0, // 원본 cm 단위: 실제 수십 단위 크기
     clips: { idle: 'anims' },
     idleTime: 0,
   },
@@ -122,6 +122,32 @@ function GlbViewModel({ id, apiRef, flashRef }) {
   const built = useMemo(() => {
     const root = cloneSkinned(scene)
     fixMaterials(root)
+    // 애니메이션 리깅 모델은 정규화 박스로 중심을 잡으면 스킨/이상치 때문에 왜곡될 수 있음.
+    // 파일별 실제 원본 단위에 맞춘 배율을 사용한다.
+    if (id === 'pistol') {
+      // Glock 메시에는 -2500 이하 Z좌표의 멀리 떨어진 부품이 포함됨.
+      // 해당 삼각형만 제거해 카메라를 통째로 가리는 현상을 줄인다.
+      root.traverse((obj) => {
+        if (!obj.isMesh || !obj.geometry?.getAttribute('position')) return
+        const geom = obj.geometry.clone()
+        const positions = geom.getAttribute('position')
+        if (positions.count < 4000 || geom.index == null) return
+        let minZ = Infinity
+        for (let i = 0; i < positions.count; i++) minZ = Math.min(minZ, positions.getZ(i))
+        if (minZ > -1000) return
+        const index = geom.index.array
+        const kept = []
+        for (let i = 0; i < index.length; i += 3) {
+          const a = index[i], b = index[i + 1], c = index[i + 2]
+          if (positions.getZ(a) < -1000 || positions.getZ(b) < -1000 || positions.getZ(c) < -1000) continue
+          kept.push(a, b, c)
+        }
+        geom.setIndex(kept)
+        geom.computeBoundingBox()
+        geom.computeBoundingSphere()
+        obj.geometry = geom
+      })
+    }
     return { root, api: makeApi(root, animations, def) }
   }, [scene, animations, def])
 
