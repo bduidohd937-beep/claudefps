@@ -320,6 +320,27 @@ export default function Bot() {
     return h ? h.timeOfImpact : len
   }
 
+  // Find a patrol point on the SAME collision floor with a mostly clear short approach.
+  // This is deliberately local steering, not a claim of full multi-floor pathfinding.
+  const choosePatrol = (p) => {
+    const ray = tmp.groundRay
+    for (let i = 0; i < 18; i++) {
+      const angle = rand(0, Math.PI * 2)
+      const distance = rand(4, 13)
+      const dx = Math.cos(angle), dz = Math.sin(angle)
+      if (probe(p.x, p.y - 0.05, p.z, dx, dz, distance) < distance - 0.6) continue
+      const x = p.x + dx * distance, z = p.z + dz * distance
+      ray.origin.x = x; ray.origin.y = p.y + 1.4; ray.origin.z = z
+      ray.dir.x = 0; ray.dir.y = -1; ray.dir.z = 0
+      const ground = world.castRayAndGetNormal(ray, 3.4, true, undefined, undefined, undefined, undefined, tmp.notBot)
+      if (!ground || ground.normal.y < 0.72) continue
+      const floorY = ray.origin.y - ground.timeOfImpact
+      if (Math.abs(floorY - (p.y - CFG.capsuleHalfHeight - CFG.capsuleRadius)) > 0.55) continue
+      return { x, z }
+    }
+    return null
+  }
+
   // 플레이어 시야가 막히는 가까운 지점 찾기 (엄폐)
   const findCover = (p, ex, ey, ez) => {
     let best = null
@@ -426,10 +447,14 @@ export default function Bot() {
       if (st.los) {
         if (!st.seen) { st.seen = true; st.seenAt = t }
         st.lastSeen = t
-      } else if (st.seen && t - st.lastSeen > 1.2) {
+        st.lastKnown = { x: pp.x, z: pp.z }
+        st.investigateUntil = t + 5
+        st.patrolGoal = null
+      } else if (st.seen && t - st.lastSeen > 0.55) {
         st.seen = false
       }
-      const canShoot = st.seen && t - st.seenAt >= cfg.react
+      // Never fire on stale sight / through walls just because a target was seen earlier.
+      const canShoot = st.los && st.seen && t - st.seenAt >= cfg.react
 
       // ── 이동 의도 ──
       if (st.state === 'cover' && st.coverPos) {
@@ -437,9 +462,28 @@ export default function Bot() {
         const cd = Math.hypot(cx, cz)
         if (cd < 0.8 || t > st.coverUntil) { st.state = 'seek'; st.coverPos = null }
         else { dirx = cx / cd; dirz = cz / cd; spd = cfg.speed * 1.15 }
-      } else if (!st.seen) {
-        st.state = 'seek'
-        dirx = toX; dirz = toZ; spd = cfg.speed
+      } else if (!st.los) {
+        // Investigate the last visible/heard location, NOT the current player coordinates.
+        let goal = t < st.investigateUntil ? st.lastKnown : null
+        if (goal && Math.hypot(goal.x - p.x, goal.z - p.z) < 1.7) {
+          st.investigateUntil = 0
+          st.lastKnown = null
+          goal = null
+        }
+        if (!goal) {
+          if (!st.patrolGoal || t >= st.nextPatrol ||
+            Math.hypot(st.patrolGoal.x - p.x, st.patrolGoal.z - p.z) < 1.5) {
+            st.patrolGoal = choosePatrol(p)
+            st.nextPatrol = t + rand(4, 8)
+          }
+          goal = st.patrolGoal
+        }
+        st.state = st.lastKnown && goal === st.lastKnown ? 'investigate' : 'patrol'
+        if (goal) {
+          const gx = goal.x - p.x, gz = goal.z - p.z
+          const d = Math.hypot(gx, gz)
+          if (d > 0.5) { dirx = gx / d; dirz = gz / d; spd = cfg.speed * (st.state === 'patrol' ? 0.65 : 0.9) }
+        }
       } else {
         st.state = 'engage'
         // 체력이 낮거나 맞은 직후 → 엄폐 (난이도 3 이상)
@@ -510,7 +554,7 @@ export default function Bot() {
       }
 
       // 몸 방향: 발견했으면 플레이어 쪽, 아니면 이동 방향
-      const target = st.seen ? Math.atan2(dx, dz) : spd > 0.3 ? Math.atan2(dirx, dirz) : st.yaw
+      const target = st.los ? Math.atan2(dx, dz) : spd > 0.3 ? Math.atan2(dirx, dirz) : st.yaw
       let diff = target - st.yaw
       diff = Math.atan2(Math.sin(diff), Math.cos(diff))
       st.yaw += diff * (1 - Math.exp(-10 * dt))
