@@ -9,7 +9,8 @@ import { live, refs, useGame } from '../store'
 import { WEAPONS, calcDamage } from '../weapons'
 import { absorbArmor } from '../economy'
 import { enemies, targetMeshes } from '../enemies'
-import { play } from '../audio'
+import { play, playBotFootstep } from '../audio'
+import { FOOTSTEP_GAITS } from './FootstepMath.js'
 import { on } from '../fx'
 import { canBotFire, investigationTarget, validStepHeight } from './AITactics.js'
 import { spawnImpact } from './Impacts'
@@ -211,6 +212,8 @@ export default function Bot() {
     losRay: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }),
     probeRay: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }),
     groundRay: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 }),
+    cameraRight: new THREE.Vector3(),
+    footstepVariant: 0,
     mid: new THREE.Vector3(),
     notBot: (c) => c.parent()?.handle !== body.current?.handle,
   }), [rapier])
@@ -223,6 +226,7 @@ export default function Bot() {
     hurtAt: -9, stuckAt: 0, stuckX: 0, stuckZ: 0, unstuckUntil: 0, ux: 0, uz: 0, flashUntil: 0,
     lastKnown: null, heardAt: -9, investigateUntil: 0, nextHear: 0,
     patrolGoal: null, nextPatrol: 0, nextHop: 0, avoidSign: 0, avoidUntil: 0,
+    nextFootstep: 0,
   })
 
   // 레지스트리 등록 (플레이어 사격 판정이 사용)
@@ -285,6 +289,7 @@ export default function Bot() {
         nextCover: 0, hurtAt: -9, speed: 0, stuckAt: 0, unstuckUntil: 0,
         flashUntil: 0, lastKnown: null, heardAt: -9, investigateUntil: 0,
         nextHear: 0, patrolGoal: null, nextPatrol: 0, nextHop: 0, avoidSign: 0, avoidUntil: 0,
+        nextFootstep: 0,
       })
       if (b) {
         b.setEnabled(true)
@@ -492,7 +497,12 @@ export default function Bot() {
         if (goal) {
           const gx = goal.x - p.x, gz = goal.z - p.z
           const d = Math.hypot(gx, gz)
-          if (d > 0.5) { dirx = gx / d; dirz = gz / d; spd = cfg.speed * (st.state === 'patrol' ? 0.65 : 0.9) }
+          if (d > 0.5) {
+            dirx = gx / d; dirz = gz / d
+            // Close-range investigation is quiet; loud running is reserved for engagement/chasing.
+            spd = st.state === 'patrol' ? Math.min(cfg.speed * 0.65, 2.4)
+              : d < 7 ? Math.min(cfg.speed, 1.55) : cfg.speed * 0.9
+          }
         }
       } else {
         st.state = 'engage'
@@ -610,6 +620,22 @@ export default function Bot() {
     const vz = v.z + (dirz * spd - v.z) * f
     if (!st.dead) b.setLinvel({ x: vx, y: hop ? CFG.jumpVelocity : v.y, z: vz }, true)
     st.speed = Math.hypot(vx, vz)
+
+    if (active && st.speed > 0.8 && Math.abs(v.y) < 0.3 && t >= st.nextFootstep) {
+      const gait = st.state === 'investigate' && st.speed < 1.8 ? 'crouch'
+        : st.speed > 2.8 ? 'run' : 'walk'
+      tmp.cameraRight.set(1, 0, 0).applyQuaternion(camera.quaternion)
+      playBotFootstep({
+        source: [p.x, p.y, p.z],
+        listener: [camera.position.x, camera.position.y, camera.position.z],
+        right: [tmp.cameraRight.x, tmp.cameraRight.y, tmp.cameraRight.z],
+        gait,
+        variant: tmp.footstepVariant++ % 2,
+      })
+      st.nextFootstep = t + FOOTSTEP_GAITS[gait].interval
+    } else if (!active || st.speed < 0.8 || Math.abs(v.y) >= 0.3) {
+      st.nextFootstep = Math.max(st.nextFootstep, t + 0.06)
+    }
 
     // 사망 시 뒤로 쓰러짐 / 평상시 yaw 적용
     if (st.dead) {
