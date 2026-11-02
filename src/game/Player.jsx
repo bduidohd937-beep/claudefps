@@ -25,6 +25,8 @@ export default function Player() {
     nextStep: 0,
     step: 0,
     editorFrozen: false,
+    fallCount: 0,
+    lastFallAt: 0,
   }), [rapier])
 
   useEffect(() => {
@@ -67,7 +69,15 @@ export default function Player() {
     }
 
     if (pos.y < CFG.killY) {
-      const s = refs.safePlayerSpawn || SPAWNS.player
+      const elapsed = performance.now() / 1000
+      tmp.fallCount = elapsed - tmp.lastFallAt < 20 ? tmp.fallCount + 1 : 1
+      tmp.lastFallAt = elapsed
+      // 같은 위치에서 두 번 떨어지면 자동 편집기로 구조한다.
+      if (tmp.fallCount >= 2) useGame.getState().setSpawnEditorOpen(true)
+      const b = refs.mapBounds
+      const s = tmp.fallCount >= 2 && b
+        ? [b.center[0], b.max[1] + 4, b.center[2]]
+        : refs.safePlayerSpawn || SPAWNS.player
       rb.setTranslation({ x: s[0], y: s[1], z: s[2] }, true)
       rb.setLinvel({ x: 0, y: 0, z: 0 }, true)
       return
