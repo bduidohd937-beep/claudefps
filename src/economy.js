@@ -1,5 +1,5 @@
-import { CFG, MATCH } from './config'
-import { WEAPONS } from './weapons'
+import { CFG, MATCH } from './config.js'
+import { WEAPONS } from './weapons.js'
 
 // Both sides start from exactly the same free equipment and ammunition.
 export const initialAmmo = () => Object.fromEntries(
