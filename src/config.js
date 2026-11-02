@@ -1,0 +1,110 @@
+// 모든 튜닝 값은 여기서 조절합니다. (단위: m, s, 도(deg))
+const params = new URLSearchParams(window.location.search)
+
+export const TRAINING = params.get('training') === '1' // ?training=1 → 상점/라운드 없이 더미 사격 연습
+export const BOT_MODEL_URL = '/models/enemy.glb'
+
+export const MAPS = {
+  arena: null, // 내장 테스트 아레나 (GLB 없이 동작)
+  pvp: '/maps/fps_map_pvp_pve_games.glb',
+  brutalist: '/maps/brutalist_concrete_map_free_retro_prop.glb',
+  warface: '/maps/warface_pvp_map_fps.glb',
+}
+
+// 맵마다 크기/스폰 위치가 다릅니다. GLB 맵은 게임 중 F4(내 위치=플레이어 스폰) / F3(내 위치=봇 스폰)로
+// 현재 위치를 저장할 수 있어서, 숫자를 직접 고치지 않아도 됩니다.
+export const MAP_SETTINGS = {
+  arena: { scale: 1, spawn: [0, 2, 22], botSpawn: [0, 2, -22] },
+  pvp: { scale: 1, spawn: [0, 5, 0], botSpawn: [0, 5, -15] },
+  brutalist: { scale: 1, spawn: [0, 5, 0], botSpawn: [0, 5, -15] },
+  warface: { scale: 1, spawn: [0, 5, 0], botSpawn: [0, 5, -15] },
+}
+
+const mapKey = MAPS[params.get('map')] !== undefined ? params.get('map') : 'arena'
+
+const num3 = (s) => {
+  const a = s?.split(',').map(Number)
+  return a?.length === 3 && a.every(Number.isFinite) ? a : null
+}
+const ok3 = (a) => Array.isArray(a) && a.length === 3 && a.every(Number.isFinite)
+
+const SPAWN_KEY = `claudefps.spawn.${mapKey}`
+let stored = {}
+try { stored = JSON.parse(localStorage.getItem(SPAWN_KEY) || '{}') } catch {}
+
+export const SPAWNS = {
+  player: num3(params.get('spawn')) || (ok3(stored.player) && stored.player) || MAP_SETTINGS[mapKey].spawn,
+  bot: num3(params.get('bot')) || (ok3(stored.bot) && stored.bot) || MAP_SETTINGS[mapKey].botSpawn,
+}
+
+export function saveSpawn(kind, pos) {
+  SPAWNS[kind] = pos
+  stored[kind] = pos
+  try { localStorage.setItem(SPAWN_KEY, JSON.stringify(stored)) } catch {}
+}
+
+export const ACTIVE_MAP = {
+  key: mapKey,
+  url: MAPS[mapKey],
+  scale: MAP_SETTINGS[mapKey].scale,
+  spawn: SPAWNS.player,
+}
+
+// 매치 규칙 / 경제
+export const MATCH = {
+  startMoney: 800,
+  maxMoney: 16000,
+  killReward: 300,
+  winReward: 3250,
+  lossReward: 1400,
+  winScore: 5, // 5라운드 선승제
+  roundTime: 90, // 시간 초과 시 AI 승리
+  buyTime: 15,
+  endDelay: 3, // 라운드 종료 후 다음 라운드까지 (초)
+}
+
+export const CFG = {
+  fov: 80,
+  vmFov: 62, // 1인칭 총기 전용 카메라 FOV
+  gravity: -20,
+  killY: -60,
+
+  capsuleHalfHeight: 0.45,
+  capsuleRadius: 0.35,
+  groundRayLen: 0.9,
+
+  // 이동 속도 (m/s): 기본 = 걷기, Shift = 달리기, C = 앉기
+  walkSpeed: 3.6,
+  runSpeed: 6.4,
+  crouchSpeed: 2.2,
+  jumpVelocity: 6.2,
+  groundAccel: 14,
+  groundBrake: 22,
+  airAccel: 2.2,
+
+  eyeStand: 0.75,
+  eyeCrouch: 0.2,
+  eyeDead: -0.55,
+  eyeLerp: 14,
+
+  // 이동 탄 퍼짐 (원뿔 반각, 도)
+  baseSpread: 0.15,
+  moveSpread: 4.2,
+  airSpread: 6.5,
+  crouchMul: 0.5,
+  brakeThreshold: 1.0,
+  spreadGrow: 25,
+  spreadRecover: 9,
+
+  maxRange: 300,
+
+  // 아머: 피격 데미지의 66%를 아머가 먼저 흡수, 나머지 34%만 HP 차감
+  armorRatio: 0.66,
+  armorMax: 100,
+
+  // ?training=1 용 더미 위치 (플레이어 스폰 기준 오프셋)
+  dummies: [[0, -12], [-10, -22], [14, -27], [-4, -20]],
+
+  sensMin: 0.1,
+  sensMax: 3,
+}
