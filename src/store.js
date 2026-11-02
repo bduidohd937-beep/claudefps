@@ -23,6 +23,12 @@ export const useGame = create((set, get) => ({
   // ----- 입력/설정 -----
   locked: false,
   spawnEditorOpen: false,
+  tunerOpen: false,
+  setTunerOpen: (open) => {
+    live.tuner = open
+    set({ tunerOpen: open })
+    if (open) refs.unlock?.()
+  },
   setSpawnEditorOpen: (open) => {
     set({ spawnEditorOpen: open })
     if (open) refs.unlock?.()

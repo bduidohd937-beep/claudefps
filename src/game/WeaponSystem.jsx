@@ -87,7 +87,14 @@ export default function WeaponSystem() {
     }
     const mu = (e) => { if (e.button === 0) live.firing = false }
     const kd = (e) => {
-      if (e.code === 'F2') { live.tuner = !live.tuner; return }
+      if (e.code === 'F2') {
+        e.preventDefault()
+        if (!e.repeat) {
+          const st = useGame.getState()
+          st.setTunerOpen(!st.tunerOpen)
+        }
+        return
+      }
       if (!live.locked) return
 
       // 뷰모델 튜너 (F2로 켠 뒤 사용)
