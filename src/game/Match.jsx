@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useRapier } from '@react-three/rapier'
-import { CFG, MATCH, SPAWNS, TRAINING, saveSpawn } from '../config'
+import { CFG, MATCH, SPAWNS, TRAINING, saveSpawn, SPAWN_MANUAL } from '../config'
 import { live, refs, useGame } from '../store'
 import { enemies } from '../enemies'
 import { cam, on } from '../fx'
@@ -34,16 +34,24 @@ export default function Match() {
       return !cast([x, groundY + 0.05, z], [0, 1, 0], height + 0.15)
     }
 
-    return (requested, avoid = null) => {
-      for (let ring = 0; ring <= 16; ring++) {
+    return (requested, avoid = null, maxRing = 8) => {
+      // 요청한 좌표가 허공이면 맵 실제 영역 중앙에서도 바닥을 검색.
+      const bounds = refs.mapBounds
+      const centers = [requested]
+      if (maxRing > 1 && bounds) centers.push([
+        bounds.center[0], bounds.max[1] + 2, bounds.center[2],
+      ])
+      for (const center of centers) {
+      for (let ring = 0; ring <= maxRing; ring++) {
         const count = ring === 0 ? 1 : ring * 8
         for (let i = 0; i < count; i++) {
           const angle = (i / count) * Math.PI * 2
-          const x = requested[0] + Math.cos(angle) * ring * 1.5
-          const z = requested[2] + Math.sin(angle) * ring * 1.5
+          const x = center[0] + Math.cos(angle) * ring * 2
+          const z = center[2] + Math.sin(angle) * ring * 2
           if (avoid && Math.hypot(x - avoid[0], z - avoid[2]) < CFG.spawnMinDistance) continue
-          const top = Math.max(requested[1] + 10, CFG.spawnProbeTop)
-          const floor = cast([x, top, z], [0, -1, 0], CFG.spawnProbeDepth, true)
+          const top = Math.max(center[1] + 10, CFG.spawnProbeTop, (bounds?.max[1] ?? 0) + 10)
+          const depth = Math.max(CFG.spawnProbeDepth, top - (bounds?.min[1] ?? -20) + 20)
+          const floor = cast([x, top, z], [0, -1, 0], depth, true)
           if (!floor || floor.normal.y < 0.72) continue
           const groundY = top - floor.timeOfImpact
           if (hasClearance(x, groundY, z)) {
@@ -51,34 +59,44 @@ export default function Match() {
           }
         }
       }
-      console.warn('[spawn] 안전한 위치를 찾지 못해 설정된 좌표를 사용합니다.', requested)
-      return [...requested]
+      }
+      console.warn('[spawn] 지면을 찾지 못했습니다. 수동 스폰 편집기로 전환합니다.', requested)
+      return null
     }
   }, [world, rapier])
 
   useEffect(() => {
     // 라운드 시작 시 플레이어/봇 위치 초기화 + 서로 마주보게 설정
+    refs.snapSpawn = (pos) => findSafeSpawn(pos, null, 1)
     refs.resetRound = () => {
-      const p = findSafeSpawn(SPAWNS.player)
-      const bp = findSafeSpawn(SPAWNS.bot, p)
+      const bounds = refs.mapBounds
+      const p = SPAWN_MANUAL.player
+        ? [...SPAWNS.player] : findSafeSpawn(SPAWNS.player)
+      const bp = SPAWN_MANUAL.bot
+        ? [...SPAWNS.bot] : findSafeSpawn(SPAWNS.bot, p)
+      const playerSpawn = p || (bounds
+        ? [bounds.center[0], bounds.max[1] + 4, bounds.center[2]]
+        : [...SPAWNS.player])
+      const botSpawn = bp || [...SPAWNS.bot]
+      if (!p) useGame.getState().setSpawnEditorOpen(true)
       refs.safePlayerSpawn = p
       refs.safeBotSpawn = bp
-      if (p.some((value, i) => Math.abs(value - SPAWNS.player[i]) > 0.1)) {
+      if (p && p.some((value, i) => Math.abs(value - SPAWNS.player[i]) > 0.1)) {
         console.info('[spawn] 플레이어 스폰 자동 보정', SPAWNS.player, '→', p.map((v) => Number(v.toFixed(2))))
       }
-      if (bp.some((value, i) => Math.abs(value - SPAWNS.bot[i]) > 0.1)) {
+      if (bp && bp.some((value, i) => Math.abs(value - SPAWNS.bot[i]) > 0.1)) {
         console.info('[spawn] AI 스폰 자동 보정', SPAWNS.bot, '→', bp.map((v) => Number(v.toFixed(2))))
       }
       const rb = refs.playerBody
       if (rb) {
-        rb.setTranslation({ x: p[0], y: p[1], z: p[2] }, true)
+        rb.setTranslation({ x: playerSpawn[0], y: playerSpawn[1], z: playerSpawn[2] }, true)
         rb.setLinvel({ x: 0, y: 0, z: 0 }, true)
       }
-      camera.position.set(p[0], p[1] + 0.75, p[2])
-      camera.lookAt(bp[0], p[1] + 0.75, bp[2])
+      camera.position.set(playerSpawn[0], playerSpawn[1] + 0.75, playerSpawn[2])
+      camera.lookAt(botSpawn[0], playerSpawn[1] + 0.75, botSpawn[2])
       cam.recoil = 0; cam.shake = 0; cam.flinchP = 0; cam.flinchY = 0
       live.fireSpread = 0
-      refs.resetBot?.(bp)
+      refs.resetBot?.(botSpawn)
     }
 
     // 개발용: F4 = 지금 위치를 플레이어 스폰으로 저장 / F3 = 봇 스폰으로 저장 (맵별로 기억됨)
@@ -103,12 +121,14 @@ export default function Match() {
       window.removeEventListener('keydown', kd)
       off()
       refs.resetRound = null
+      refs.snapSpawn = null
     }
   }, [camera, findSafeSpawn])
 
   useFrame((_, dt) => {
     if (TRAINING) return
     const st = useGame.getState()
+    if (st.spawnEditorOpen) return
     const now = performance.now() / 1000
 
     if (st.phase === 'buy' && now >= live.buyEnd) {
