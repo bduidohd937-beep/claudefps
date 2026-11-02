@@ -5,6 +5,7 @@ import { WEAPONS } from '../weapons'
 import { SHOP } from '../shop'
 import { on } from '../fx'
 import { initAudio } from '../audio'
+import SpawnEditor from './SpawnEditor'
 
 const STATE_LABEL = { stand: '정지', walk: '걷기', run: '달리기', crouch: '앉기', air: '공중' }
 
@@ -386,6 +387,7 @@ function Menu({ pause }) {
           <kbd>1 2 3</kbd><span>주무기 / 권총 / 나이프</span>
           <kbd>B</kbd><span>상점</span>
           <kbd>Esc</kbd><span>일시정지</span>
+          <kbd>F6</kbd><span>스폰 좌표 편집</span>
         </div>
 
         <SensSlider />
@@ -395,8 +397,12 @@ function Menu({ pause }) {
         ) : (
           <button className="start" onClick={start}>{TRAINING ? '연습 시작' : '매치 시작'}</button>
         )}
+        <button className="ghost" onClick={() => useGame.getState().setSpawnEditorOpen(true)}>
+          스폰 좌표 직접 설정 (F6)
+        </button>
         <p className="hint">
-          포함된 PVP 맵은 주소 뒤에 ?map=pvp를 붙여 선택합니다. 스폰은 자동 보정되며 F4(내 스폰) / F3(봇 스폰)로 저장할 수 있습니다.
+          맵은 주소 뒤에 ?map=pvp 또는 ?map=offense를 붙여 선택합니다.
+          F6으로 플레이어·AI의 스폰 좌표를 직접 설정할 수 있습니다.
         </p>
       </div>
     </div>
@@ -428,18 +434,28 @@ export default function HUD() {
   const locked = useGame((s) => s.locked)
   const phase = useGame((s) => s.phase)
   const shopOpen = useGame((s) => s.shopOpen)
+  const spawnEditorOpen = useGame((s) => s.spawnEditorOpen)
 
   // B키: 상점 토글 (포인터락이 풀려 있어도 동작해야 하므로 전역 리스너)
   useEffect(() => {
     const kd = (e) => {
-      if (e.code === 'KeyB' && !e.repeat) useGame.getState().toggleShop()
+      if (e.repeat) return
+      if (e.code === 'F6') {
+        e.preventDefault()
+        const st = useGame.getState()
+        st.setSpawnEditorOpen(!st.spawnEditorOpen)
+      } else if (e.code === 'Escape' && useGame.getState().spawnEditorOpen) {
+        useGame.getState().setSpawnEditorOpen(false)
+      } else if (e.code === 'KeyB' && !useGame.getState().spawnEditorOpen) {
+        useGame.getState().toggleShop()
+      }
     }
     window.addEventListener('keydown', kd)
     return () => window.removeEventListener('keydown', kd)
   }, [])
 
   const playing = phase === 'buy' || phase === 'live' || phase === 'roundEnd'
-  const showPause = !locked && !shopOpen && (phase === 'buy' || phase === 'live')
+  const showPause = !locked && !shopOpen && !spawnEditorOpen && (phase === 'buy' || phase === 'live')
   return (
     <>
       <DamageVignette />
@@ -452,8 +468,9 @@ export default function HUD() {
       <RoundBanner />
       {phase === 'menu' && <Menu />}
       {showPause && <Menu pause />}
-      {shopOpen && (phase === 'buy' || phase === 'live') && <Shop />}
+      {shopOpen && !spawnEditorOpen && (phase === 'buy' || phase === 'live') && <Shop />}
       <MatchEnd />
+      <SpawnEditor />
     </>
   )
 }

@@ -22,6 +22,11 @@ const now = () => performance.now() / 1000
 export const useGame = create((set, get) => ({
   // ----- 입력/설정 -----
   locked: false,
+  spawnEditorOpen: false,
+  setSpawnEditorOpen: (open) => {
+    set({ spawnEditorOpen: open })
+    if (open) refs.unlock?.()
+  },
   sensitivity: readSens(),
   lock: () => {}, // Controls 컴포넌트가 실제 함수로 교체
   setLocked: (locked) => set({ locked }),
@@ -234,6 +239,9 @@ export const live = {
 export const refs = {
   playerBody: null,
   botBody: null,
+  teleportPlayer: null,
+  snapSpawn: null,
+  mapBounds: null,
   safePlayerSpawn: null,
   safeBotSpawn: null,
   resetRound: null, // Match가 등록

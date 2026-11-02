@@ -39,7 +39,23 @@ export const SPAWNS = {
   bot: num3(params.get('bot')) || (ok3(stored.bot) && stored.bot) || MAP_SETTINGS[mapKey].botSpawn,
 }
 
+export const SPAWN_MANUAL = {
+  player: !!num3(params.get('spawn')) || ok3(stored.player),
+  bot: !!num3(params.get('bot')) || ok3(stored.bot),
+}
+
+export function clearSpawnOverrides() {
+  stored = {}
+  SPAWN_MANUAL.player = false
+  SPAWN_MANUAL.bot = false
+  SPAWNS.player = [...MAP_SETTINGS[mapKey].spawn]
+  SPAWNS.bot = [...MAP_SETTINGS[mapKey].botSpawn]
+  try { localStorage.removeItem(SPAWN_KEY) } catch {}
+}
+
 export function saveSpawn(kind, pos) {
+  if (kind !== 'player' && kind !== 'bot' || !ok3(pos)) return
+  SPAWN_MANUAL[kind] = true
   SPAWNS[kind] = pos
   stored[kind] = pos
   try { localStorage.setItem(SPAWN_KEY, JSON.stringify(stored)) } catch {}

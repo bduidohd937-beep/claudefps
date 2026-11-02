@@ -1,9 +1,9 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { CapsuleCollider, RigidBody, useRapier } from '@react-three/rapier'
 import * as THREE from 'three'
 import { CFG, SPAWNS } from '../config'
-import { live, refs } from '../store'
+import { live, refs, useGame } from '../store'
 import { camBegin, camEnd } from '../fx'
 import { play } from '../audio'
 import { useKeys } from './useKeys'
@@ -24,7 +24,20 @@ export default function Player() {
     vel: { x: 0, y: 0, z: 0 },
     nextStep: 0,
     step: 0,
+    editorFrozen: false,
+    fallCount: 0,
+    lastFallAt: 0,
   }), [rapier])
+
+  useEffect(() => {
+    refs.teleportPlayer = (pos) => {
+      if (!body.current || !Array.isArray(pos) || pos.length !== 3 || !pos.every(Number.isFinite)) return
+      body.current.setTranslation({ x: pos[0], y: pos[1], z: pos[2] }, true)
+      body.current.setLinvel({ x: 0, y: 0, z: 0 }, true)
+      camera.position.set(pos[0], pos[1] + CFG.eyeStand, pos[2])
+    }
+    return () => { refs.teleportPlayer = null }
+  }, [camera])
 
   useFrame((state, delta) => {
     const rb = body.current
@@ -39,8 +52,32 @@ export default function Player() {
     const pos = rb.translation()
     const vel = rb.linvel()
 
+    // 스폰 좌표를 조정하는 동안에는 중력/이동을 멈춰 공중에서도 구조 가능.
+    const editing = useGame.getState().spawnEditorOpen
+    if (editing) {
+      if (!tmp.editorFrozen) {
+        rb.setGravityScale(0, true)
+        tmp.editorFrozen = true
+      }
+      rb.setLinvel({ x: 0, y: 0, z: 0 }, true)
+      camera.position.set(pos.x, pos.y + CFG.eyeStand, pos.z)
+      return
+    }
+    if (tmp.editorFrozen) {
+      rb.setGravityScale(1, true)
+      tmp.editorFrozen = false
+    }
+
     if (pos.y < CFG.killY) {
-      const s = refs.safePlayerSpawn || SPAWNS.player
+      const elapsed = performance.now() / 1000
+      tmp.fallCount = elapsed - tmp.lastFallAt < 20 ? tmp.fallCount + 1 : 1
+      tmp.lastFallAt = elapsed
+      // 같은 위치에서 두 번 떨어지면 자동 편집기로 구조한다.
+      if (tmp.fallCount >= 2) useGame.getState().setSpawnEditorOpen(true)
+      const b = refs.mapBounds
+      const s = tmp.fallCount >= 2 && b
+        ? [b.center[0], b.max[1] + 4, b.center[2]]
+        : refs.safePlayerSpawn || SPAWNS.player
       rb.setTranslation({ x: s[0], y: s[1], z: s[2] }, true)
       rb.setLinvel({ x: 0, y: 0, z: 0 }, true)
       return
