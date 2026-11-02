@@ -24,11 +24,11 @@ const randInt = (a, b) => Math.floor(rand(a, b + 1))
 // react: 플레이어 발견 후 첫 사격까지 지연(초) / err: 기본 조준 오차(도) / moveErr: 이동 중 추가 오차
 // headChance: 버스트마다 머리를 조준할 확률 / brake: true면 멈춰 서서 쏨(브레이킹) / cover: 엄폐 사용
 const DIFF = {
-  1: { react: 1.2, err: 7.0, moveErr: 4.0, dmg: 8, interval: 0.5, burst: [1, 2], rest: [0.9, 1.6], headChance: 0.01, speed: 2.6, brake: false, cover: false },
-  2: { react: 0.8, err: 5.0, moveErr: 3.5, dmg: 10, interval: 0.38, burst: [2, 3], rest: [0.7, 1.3], headChance: 0.03, speed: 3.0, brake: false, cover: false },
-  3: { react: 0.5, err: 3.0, moveErr: 2.5, dmg: 13, interval: 0.22, burst: [3, 5], rest: [0.5, 1.0], headChance: 0.07, speed: 3.4, brake: false, cover: true },
-  4: { react: 0.38, err: 1.6, moveErr: 2.0, dmg: 16, interval: 0.15, burst: [4, 7], rest: [0.35, 0.8], headChance: 0.12, speed: 3.8, brake: true, cover: true },
-  5: { react: 0.3, err: 0.9, moveErr: 1.6, dmg: 19, interval: 0.12, burst: [5, 8], rest: [0.25, 0.55], headChance: 0.18, speed: 4.1, brake: true, cover: true },
+  1: { react: 1.2, err: 7.0, moveErr: 4.0, interval: 0.5, burst: [1, 2], rest: [0.9, 1.6], headChance: 0.01, speed: 2.6, brake: false, cover: false },
+  2: { react: 0.8, err: 5.0, moveErr: 3.5, interval: 0.38, burst: [2, 3], rest: [0.7, 1.3], headChance: 0.03, speed: 3.0, brake: false, cover: false },
+  3: { react: 0.5, err: 3.0, moveErr: 2.5, interval: 0.22, burst: [3, 5], rest: [0.5, 1.0], headChance: 0.07, speed: 3.4, brake: false, cover: true },
+  4: { react: 0.38, err: 1.6, moveErr: 2.0, interval: 0.15, burst: [4, 7], rest: [0.35, 0.8], headChance: 0.12, speed: 3.8, brake: true, cover: true },
+  5: { react: 0.3, err: 0.9, moveErr: 1.6, interval: 0.12, burst: [5, 8], rest: [0.25, 0.55], headChance: 0.18, speed: 4.1, brake: true, cover: true },
 }
 
 // ───────── 봇 모델 (swat.glb: ValveBiped 본, 애니메이션 클립 없음 → 코드로 자세/걷기 구현) ─────────
