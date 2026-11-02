@@ -237,7 +237,7 @@ export default function Bot() {
       get dead() { return st.dead },
       get hp() { return st.hp },
       takeDamage(dmg) {
-        if (st.dead) return { killed: false }
+        if (st.dead || (useGame.getState().phase === 'live' && now() < useGame.getState().spawnProtectionUntil)) return { killed: false }
         const econ = useGame.getState()
         const hit = absorbArmor(st.hp, econ.botEconomy.armor, dmg)
         st.hp = hit.hp
@@ -468,7 +468,8 @@ export default function Bot() {
         st.seen = false
       }
       // Never fire on stale sight / through walls just because a target was seen earlier.
-      const canShoot = canBotFire({ visible: st.los, spotted: st.seen, seenAt: st.seenAt, time: t, reaction: cfg.react })
+      const canShoot = t >= game.spawnProtectionUntil &&
+        canBotFire({ visible: st.los, spotted: st.seen, seenAt: st.seenAt, time: t, reaction: cfg.react })
 
       // ── 이동 의도 ──
       if (st.state === 'cover' && st.coverPos) {
@@ -586,7 +587,7 @@ export default function Bot() {
       }
 
       // ── 사격 · 탄창 · 재장전 (플레이어와 같은 총기 데이터 사용) ──
-      if (active && !st.reloadUntil && t >= st.nextShot) {
+      if (active && t >= game.spawnProtectionUntil && !st.reloadUntil && t >= st.nextShot) {
         const slot = useGame.getState().botEconomy.ammo[currentWeapon.id]
         if (slot.mag <= 0 && slot.reserve > 0) {
           st.reloadUntil = t + currentWeapon.reloadTimeEmpty
