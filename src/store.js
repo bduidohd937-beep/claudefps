@@ -1,10 +1,10 @@
 import { create } from 'zustand'
-import { CFG, MATCH, TRAINING } from './config'
-import { WEAPONS } from './weapons'
-import { emit, cam } from './fx'
-import { enemies } from './enemies'
-import { play } from './audio'
-import { initialAmmo, initialOwned, initialBotEconomy, refillAllAmmo, loseEquipment, roundPayout, cappedMoney, absorbArmor, autoBuyBot } from './economy'
+import { CFG, MATCH, TRAINING } from './config.js'
+import { WEAPONS } from './weapons.js'
+import { emit, cam } from './fx.js'
+import { enemies } from './enemies.js'
+import { play } from './audio.js'
+import { initialAmmo, initialOwned, initialBotEconomy, refillAllAmmo, loseEquipment, roundPayout, cappedMoney, absorbArmor, autoBuyBot } from './economy.js'
 
 const readSens = () => {
   try {
