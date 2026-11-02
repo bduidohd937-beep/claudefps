@@ -65,6 +65,19 @@ export default function Match() {
       return null
     }
 
+    // F6 수동 저장도 바닥·높이·충돌을 재검증. 실패하면 공중 배치를 강행하지 않는다.
+    resolve.at = (point, avoid = null, minimumDistance = CFG.spawnMinDistance) => {
+      if (!point || !point.every(Number.isFinite)) return null
+      if (avoid && Math.hypot(point[0] - avoid[0], point[2] - avoid[2]) < minimumDistance) return null
+      const top = point[1] + 2
+      const floor = cast([point[0], top, point[2]], [0, -1, 0], 4.5, true)
+      if (!floor || floor.normal.y < 0.72) return null
+      const floorY = top - floor.timeOfImpact
+      const y = floorY + CFG.capsuleHalfHeight + CFG.capsuleRadius + 0.05
+      if (Math.abs(y - point[1]) > 1.5 || !hasClearance(point[0], floorY, point[2])) return null
+      return [point[0], y, point[2]]
+    }
+
     // 기존에 찾은 안전 스폰 주변의 같은 높이 지면만 후보로 삼는다.
     // 넓은 맵 전체를 무작위로 찍으면 지붕/허공/단절된 구역에 나타날 수 있어 금지.
     resolve.randomNear = (base, avoid, previous, radius, minimumDistance) => {
@@ -104,9 +117,10 @@ export default function Match() {
       const radius = Math.min(12, Math.max(1.5, span * 0.23))
       const minimumDistance = Math.min(CFG.spawnMinDistance, Math.max(2.5, span * 0.33))
       const basePlayer = SPAWN_MANUAL.player
-        ? [...SPAWNS.player] : findSafeSpawn(SPAWNS.player)
+        ? findSafeSpawn.at(SPAWNS.player) : findSafeSpawn(SPAWNS.player)
       const baseBot = SPAWN_MANUAL.bot
-        ? [...SPAWNS.bot] : findSafeSpawn(SPAWNS.bot, basePlayer, 8, minimumDistance)
+        ? findSafeSpawn.at(SPAWNS.bot, basePlayer, minimumDistance)
+        : findSafeSpawn(SPAWNS.bot, basePlayer, 8, minimumDistance)
       let p = basePlayer
       let bp = baseBot
 
@@ -135,7 +149,7 @@ export default function Match() {
           bot: bp.map((x) => Number(x.toFixed(2))),
         })
       }
-      if (!p) useGame.getState().setSpawnEditorOpen(true)
+      if (!p || (!TRAINING && !bp)) useGame.getState().setSpawnEditorOpen(true)
       refs.safePlayerSpawn = p
       refs.safeBotSpawn = bp
       if (p && p.some((value, i) => Math.abs(value - SPAWNS.player[i]) > 0.1)) {
@@ -150,7 +164,16 @@ export default function Match() {
         rb.setLinvel({ x: 0, y: 0, z: 0 }, true)
       }
       camera.position.set(playerSpawn[0], playerSpawn[1] + 0.75, playerSpawn[2])
-      camera.lookAt(botSpawn[0], playerSpawn[1] + 0.75, botSpawn[2])
+      // 데스매치식 라운드 시작: 상대의 정확한 좌표를 시점으로 알려주지 않는다.
+      const targetX = bounds?.center[0] ?? 0
+      const targetZ = bounds?.center[2] ?? 0
+      const dx = targetX - playerSpawn[0]
+      const dz = targetZ - playerSpawn[2]
+      if (Math.hypot(dx, dz) > 0.5) {
+        camera.lookAt(targetX, playerSpawn[1] + 0.75, targetZ)
+      } else {
+        camera.lookAt(playerSpawn[0], playerSpawn[1] + 0.75, playerSpawn[2] - 5)
+      }
       cam.recoil = 0; cam.shake = 0; cam.flinchP = 0; cam.flinchY = 0
       live.fireSpread = 0
       refs.resetBot?.(botSpawn)
