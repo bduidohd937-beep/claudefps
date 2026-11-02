@@ -108,7 +108,6 @@ export default function WeaponSystem() {
           KeyZ: () => (tn.s *= 0.95), KeyX: () => (tn.s *= 1.05),
           KeyN: () => (tn.ry -= 0.1), KeyM: () => (tn.ry += 0.1),
           KeyT: () => (tn.rx += 0.1), KeyG: () => (tn.rx -= 0.1),
-          KeyV: () => (tn.rz -= 0.1), KeyB: () => (tn.rz += 0.1),
           Backspace: () => Object.assign(tn, blankTune()),
         }
         if (map[e.code]) {
