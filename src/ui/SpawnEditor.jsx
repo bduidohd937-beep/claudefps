@@ -123,7 +123,9 @@ export default function SpawnEditor() {
         <div style={{ fontSize: 12, background: '#242b32', padding: 10, marginBottom: 13, borderRadius: 4 }}>
           맵 중심 (대략): {bounds.center.map((n) => n.toFixed(1)).join(', ')}
           <div style={{ color: '#b9c1c8', marginTop: 4 }}>
-            높이 범위: {bounds.min[1].toFixed(1)} ~ {bounds.max[1].toFixed(1)}
+            X 범위: {bounds.min[0].toFixed(1)} ~ {bounds.max[0].toFixed(1)}<br />
+            Y 범위: {bounds.min[1].toFixed(1)} ~ {bounds.max[1].toFixed(1)}<br />
+            Z 범위: {bounds.min[2].toFixed(1)} ~ {bounds.max[2].toFixed(1)}
           </div>
         </div>
       )}
