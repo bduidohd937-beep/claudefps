@@ -5,6 +5,7 @@ import { CFG, MATCH, SPAWNS, TRAINING, AUTO_ENTER, START_LEVEL, DYNAMIC_SPAWNS, 
 import { live, refs, useGame } from '../store'
 import { enemies } from '../enemies'
 import { cam, on } from '../fx'
+import { exposedAtCloseRange, spawnScore } from './SpawnSafety.js'
 
 // 라운드 진행 로직: 라운드 리셋, 구매 타이머, 승패 판정, 킬 보상, 스폰 저장 단축키
 export default function Match() {
@@ -109,11 +110,8 @@ export default function Match() {
         const blocked = avoid && distanceToOpponent > 0.5 && cast(from,
           [dx / distanceToOpponent, dy / distanceToOpponent, dz / distanceToOpponent],
           Math.max(0, distanceToOpponent - 0.45))
-        const exposed = !!avoid && distanceToOpponent < 26 && !blocked
-        // Too-close direct sight lines are not random spawn candidates.
-        if (exposed) continue
-        const score = Math.min(recentDistance, radius) * 0.6 +
-          Math.min(opponentDistance, 35) * 0.4 + Math.random() * 2
+        if (avoid && exposedAtCloseRange(distanceToOpponent, !!blocked)) continue
+        const score = spawnScore(recentDistance, opponentDistance, radius, Math.random() * 2)
         valid.push({ pos: [x, centerY, z], score })
       }
       valid.sort((a, b) => b.score - a.score)
