@@ -9,7 +9,8 @@ import { live, refs, useGame } from '../store'
 import { WEAPONS, calcDamage } from '../weapons'
 import { absorbArmor } from '../economy'
 import { enemies, targetMeshes } from '../enemies'
-import { play } from '../audio'
+import { play, playBotFootstep } from '../audio'
+import { FOOTSTEP_GAITS } from './FootstepMath.js'
 import { on } from '../fx'
 import { canBotFire, investigationTarget, validStepHeight } from './AITactics.js'
 import { spawnImpact } from './Impacts'
@@ -211,6 +212,8 @@ export default function Bot() {
     losRay: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }),
     probeRay: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }),
     groundRay: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 }),
+    cameraRight: new THREE.Vector3(),
+    footstepVariant: 0,
     mid: new THREE.Vector3(),
     notBot: (c) => c.parent()?.handle !== body.current?.handle,
   }), [rapier])
@@ -223,6 +226,7 @@ export default function Bot() {
     hurtAt: -9, stuckAt: 0, stuckX: 0, stuckZ: 0, unstuckUntil: 0, ux: 0, uz: 0, flashUntil: 0,
     lastKnown: null, heardAt: -9, investigateUntil: 0, nextHear: 0,
     patrolGoal: null, nextPatrol: 0, nextHop: 0, avoidSign: 0, avoidUntil: 0,
+    nextFootstep: 0,
   })
 
   // 레지스트리 등록 (플레이어 사격 판정이 사용)
@@ -233,7 +237,7 @@ export default function Bot() {
       get dead() { return st.dead },
       get hp() { return st.hp },
       takeDamage(dmg) {
-        if (st.dead) return { killed: false }
+        if (st.dead || (useGame.getState().phase === 'live' && now() < useGame.getState().spawnProtectionUntil)) return { killed: false }
         const econ = useGame.getState()
         const hit = absorbArmor(st.hp, econ.botEconomy.armor, dmg)
         st.hp = hit.hp
@@ -285,6 +289,7 @@ export default function Bot() {
         nextCover: 0, hurtAt: -9, speed: 0, stuckAt: 0, unstuckUntil: 0,
         flashUntil: 0, lastKnown: null, heardAt: -9, investigateUntil: 0,
         nextHear: 0, patrolGoal: null, nextPatrol: 0, nextHop: 0, avoidSign: 0, avoidUntil: 0,
+        nextFootstep: 0,
       })
       if (b) {
         b.setEnabled(true)
@@ -292,7 +297,19 @@ export default function Bot() {
         b.setLinvel({ x: 0, y: 0, z: 0 }, true)
       }
     }
+    refs.teleportBot = (pos) => {
+      const b = body.current
+      if (!b || !Array.isArray(pos) || pos.length !== 3 || !pos.every(Number.isFinite)) return false
+      if (st.dead) {
+        refs.resetBot?.(pos)
+      } else {
+        b.setTranslation({ x: pos[0], y: pos[1], z: pos[2] }, true)
+        b.setLinvel({ x: 0, y: 0, z: 0 }, true)
+      }
+      return true
+    }
     return () => {
+      refs.teleportBot = null
       offNoise()
       enemies.delete('bot')
       refs.resetBot = null
@@ -463,7 +480,8 @@ export default function Bot() {
         st.seen = false
       }
       // Never fire on stale sight / through walls just because a target was seen earlier.
-      const canShoot = canBotFire({ visible: st.los, spotted: st.seen, seenAt: st.seenAt, time: t, reaction: cfg.react })
+      const canShoot = t >= game.spawnProtectionUntil &&
+        canBotFire({ visible: st.los, spotted: st.seen, seenAt: st.seenAt, time: t, reaction: cfg.react })
 
       // ── 이동 의도 ──
       if (st.state === 'cover' && st.coverPos) {
@@ -492,7 +510,12 @@ export default function Bot() {
         if (goal) {
           const gx = goal.x - p.x, gz = goal.z - p.z
           const d = Math.hypot(gx, gz)
-          if (d > 0.5) { dirx = gx / d; dirz = gz / d; spd = cfg.speed * (st.state === 'patrol' ? 0.65 : 0.9) }
+          if (d > 0.5) {
+            dirx = gx / d; dirz = gz / d
+            // Close-range investigation is quiet; loud running is reserved for engagement/chasing.
+            spd = st.state === 'patrol' ? Math.min(cfg.speed * 0.65, 2.4)
+              : d < 7 ? Math.min(cfg.speed, 1.55) : cfg.speed * 0.9
+          }
         }
       } else {
         st.state = 'engage'
@@ -576,7 +599,7 @@ export default function Bot() {
       }
 
       // ── 사격 · 탄창 · 재장전 (플레이어와 같은 총기 데이터 사용) ──
-      if (active && !st.reloadUntil && t >= st.nextShot) {
+      if (active && t >= game.spawnProtectionUntil && !st.reloadUntil && t >= st.nextShot) {
         const slot = useGame.getState().botEconomy.ammo[currentWeapon.id]
         if (slot.mag <= 0 && slot.reserve > 0) {
           st.reloadUntil = t + currentWeapon.reloadTimeEmpty
@@ -610,6 +633,23 @@ export default function Bot() {
     const vz = v.z + (dirz * spd - v.z) * f
     if (!st.dead) b.setLinvel({ x: vx, y: hop ? CFG.jumpVelocity : v.y, z: vz }, true)
     st.speed = Math.hypot(vx, vz)
+
+    if (active && st.speed > 0.8 && Math.abs(v.y) < 0.3 && t >= st.nextFootstep) {
+      const gait = st.state === 'investigate' && st.speed < 1.8 ? 'crouch'
+        : st.speed > 2.8 ? 'run' : 'walk'
+      tmp.cameraRight.set(1, 0, 0).applyQuaternion(camera.quaternion)
+      playBotFootstep({
+        source: [p.x, p.y, p.z],
+        listener: [camera.position.x, camera.position.y, camera.position.z],
+        right: [tmp.cameraRight.x, tmp.cameraRight.y, tmp.cameraRight.z],
+        gait,
+        occluded: !st.los,
+        variant: tmp.footstepVariant++ % 2,
+      })
+      st.nextFootstep = t + FOOTSTEP_GAITS[gait].interval
+    } else if (!active || st.speed < 0.8 || Math.abs(v.y) >= 0.3) {
+      st.nextFootstep = Math.max(st.nextFootstep, t + 0.06)
+    }
 
     // 사망 시 뒤로 쓰러짐 / 평상시 yaw 적용
     if (st.dead) {

@@ -67,6 +67,7 @@ export const useGame = create((set, get) => ({
   money: MATCH.startMoney,
   lossStreak: 0,
   botEconomy: initialBotEconomy(),
+  spawnProtectionUntil: 0,
   setBotArmor: (armor) => set((s) => ({ botEconomy: { ...s.botEconomy, armor } })),
   botShot: () => {
     const bot = get().botEconomy
@@ -110,6 +111,7 @@ export const useGame = create((set, get) => ({
 
   // 플레이어 피격: 아머가 데미지의 66%를 먼저 흡수, 나머지만 HP 차감
   damagePlayer: (amount, meta) => {
+    if (get().phase === 'live' && now() < get().spawnProtectionUntil) return
     const { hp, armor } = get()
     if (hp <= 0) return
     const result = absorbArmor(hp, armor, amount)
@@ -147,7 +149,8 @@ export const useGame = create((set, get) => ({
     live.reloading = false
     set({
       difficulty: d, round: 1, score: { player: 0, ai: 0 },
-      money: MATCH.startMoney, lossStreak: 0, botEconomy: initialBotEconomy(), hp: 100, armor: 0,
+      money: MATCH.startMoney, lossStreak: 0, botEconomy: initialBotEconomy(),
+      spawnProtectionUntil: 0, hp: 100, armor: 0,
       owned: initialOwned(), ammo: initialAmmo(), weapon: 'pistol',
       matchOver: null, roundBanner: null,
     })
@@ -173,7 +176,7 @@ export const useGame = create((set, get) => ({
   endBuy: () => {
     if (get().phase !== 'buy') return
     live.roundTimeLeft = MATCH.roundTime
-    set({ phase: 'live', shopOpen: false })
+    set({ phase: 'live', shopOpen: false, spawnProtectionUntil: now() + 2.5 })
   },
 
   toggleShop: () => {

@@ -70,6 +70,29 @@ function Crosshair() {
   )
 }
 
+// Both sides can move during the opening 2.5 s, but cannot shoot until READY.
+function SpawnReady() {
+  const phase = useGame((s) => s.phase)
+  const ref = useRef()
+  useEffect(() => {
+    if (phase !== 'live') return
+    let raf
+    const tick = () => {
+      const el = ref.current
+      if (!el) return
+      const remaining = Math.max(0, useGame.getState().spawnProtectionUntil - performance.now() / 1000)
+      el.style.display = remaining > 0 ? 'block' : 'none'
+      if (remaining > 0) {
+        el.textContent = '스폰 보호 · 이동 가능 · ' + remaining.toFixed(1) + '초 후 사격 시작'
+        raf = requestAnimationFrame(tick)
+      }
+    }
+    tick()
+    return () => cancelAnimationFrame(raf)
+  }, [phase])
+  return phase === 'live' ? <div className="spawn-ready" ref={ref} /> : null
+}
+
 // 적 피격: 붉은 X 히트마커(0.15초) + 데미지/헤드샷 텍스트
 function HitFeedback() {
   const marker = useRef()
@@ -430,6 +453,7 @@ export default function HUD() {
       {playing && <Vitals />}
       {playing && <Ammo />}
       <Scoreboard />
+      <SpawnReady />
       <RoundBanner />
       {phase === 'menu' && <div className="overlay"><div className="panel"><h1>전장 준비 중</h1><p className="sub">맵과 캐릭터를 불러오고 있어.</p><button className="ghost" onClick={toLobby}>메인 메뉴로 돌아가기</button></div></div>}
       {showPause && <PauseMenu />}

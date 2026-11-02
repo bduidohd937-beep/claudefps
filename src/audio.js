@@ -1,3 +1,4 @@
+import { spatialFootstep } from './game/FootstepMath.js'
 // 사운드 매니저: /sounds/*.mp3 가 있으면 그 파일을, 없으면 Web Audio로 합성한 임시 효과음을 재생합니다.
 const FILES = {
   rifle_shot: '/sounds/rifle_shot.mp3',
@@ -148,4 +149,32 @@ export function play(name, { volume = 1, rate = 1 } = {}) {
     return
   }
   SYNTH[name]?.(ctx.currentTime, volume, rate)
+}
+
+// AI footsteps have their own panned, distance-attenuated synthesis chain.
+// This intentionally does not alter the local player's existing footstep volume.
+export function playBotFootstep({ source, listener, right, gait = 'walk', variant = 0, occluded = false }) {
+  if (!ctx || !noiseBuf) return
+  const mix = spatialFootstep(source, listener, right, gait)
+  const volume = mix.volume * (occluded ? 0.38 : 1)
+  if (volume < 0.004) return
+  if (ctx.state === 'suspended') ctx.resume?.()
+  const t = ctx.currentTime
+  const src = ctx.createBufferSource()
+  src.buffer = noiseBuf
+  src.playbackRate.value = mix.rate * (variant ? 0.94 : 1.06)
+  const filter = ctx.createBiquadFilter()
+  filter.type = 'lowpass'
+  filter.frequency.value = occluded ? 370 : gait === 'crouch' ? 440 : gait === 'run' ? 1050 : 790
+  const envelope = ctx.createGain()
+  envelope.gain.setValueAtTime(Math.max(0.001, volume * 0.52), t)
+  envelope.gain.exponentialRampToValueAtTime(0.001, t + 0.12)
+  const pan = ctx.createStereoPanner?.()
+  if (pan) pan.pan.value = mix.pan
+  src.connect(filter)
+  filter.connect(envelope)
+  if (pan) envelope.connect(pan).connect(master)
+  else envelope.connect(master)
+  src.start(t, Math.random() * 0.7, 0.14)
+  src.stop(t + 0.15)
 }
