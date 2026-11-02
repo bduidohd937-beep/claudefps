@@ -297,7 +297,19 @@ export default function Bot() {
         b.setLinvel({ x: 0, y: 0, z: 0 }, true)
       }
     }
+    refs.teleportBot = (pos) => {
+      const b = body.current
+      if (!b || !Array.isArray(pos) || pos.length !== 3 || !pos.every(Number.isFinite)) return false
+      if (st.dead) {
+        refs.resetBot?.(pos)
+      } else {
+        b.setTranslation({ x: pos[0], y: pos[1], z: pos[2] }, true)
+        b.setLinvel({ x: 0, y: 0, z: 0 }, true)
+      }
+      return true
+    }
     return () => {
+      refs.teleportBot = null
       offNoise()
       enemies.delete('bot')
       refs.resetBot = null
