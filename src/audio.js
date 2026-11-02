@@ -156,8 +156,8 @@ export function play(name, { volume = 1, rate = 1 } = {}) {
 export function playBotFootstep({ source, listener, right, gait = 'walk', variant = 0, occluded = false }) {
   if (!ctx || !noiseBuf) return
   const mix = spatialFootstep(source, listener, right, gait)
-  const volume = mix.volume * (occluded ? 0.38 : 1)
-  if (volume < 0.004) return
+  const volume = mix.volume * (occluded ? 0.62 : 1)
+  if (volume < 0.012) return
   if (ctx.state === 'suspended') ctx.resume?.()
   const t = ctx.currentTime
   const src = ctx.createBufferSource()
@@ -165,16 +165,16 @@ export function playBotFootstep({ source, listener, right, gait = 'walk', varian
   src.playbackRate.value = mix.rate * (variant ? 0.94 : 1.06)
   const filter = ctx.createBiquadFilter()
   filter.type = 'lowpass'
-  filter.frequency.value = occluded ? 370 : gait === 'crouch' ? 440 : gait === 'run' ? 1050 : 790
+  filter.frequency.value = occluded ? 720 : gait === 'crouch' ? 850 : gait === 'run' ? 1900 : 1450
   const envelope = ctx.createGain()
-  envelope.gain.setValueAtTime(Math.max(0.001, volume * 0.52), t)
-  envelope.gain.exponentialRampToValueAtTime(0.001, t + 0.12)
+  envelope.gain.setValueAtTime(Math.max(0.001, volume * 0.95), t)
+  envelope.gain.exponentialRampToValueAtTime(0.001, t + 0.15)
   const pan = ctx.createStereoPanner?.()
   if (pan) pan.pan.value = mix.pan
   src.connect(filter)
   filter.connect(envelope)
   if (pan) envelope.connect(pan).connect(master)
   else envelope.connect(master)
-  src.start(t, Math.random() * 0.7, 0.14)
-  src.stop(t + 0.15)
+  src.start(t, Math.random() * 0.7, 0.17)
+  src.stop(t + 0.18)
 }
