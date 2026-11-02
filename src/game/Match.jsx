@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useRapier } from '@react-three/rapier'
-import { CFG, MATCH, SPAWNS, TRAINING, saveSpawn, SPAWN_MANUAL } from '../config'
+import { CFG, MATCH, SPAWNS, TRAINING, AUTO_ENTER, START_LEVEL, saveSpawn, SPAWN_MANUAL } from '../config'
 import { live, refs, useGame } from '../store'
 import { enemies } from '../enemies'
 import { cam, on } from '../fx'
@@ -126,9 +126,16 @@ export default function Match() {
   }, [camera, findSafeSpawn])
 
   useFrame((_, dt) => {
-    if (TRAINING) return
     const st = useGame.getState()
-    if (st.spawnEditorOpen) return
+    // Main lobby is a separate screen. Launch only after the map and both actors are mounted.
+    if (st.phase === 'menu') {
+      if (AUTO_ENTER && refs.resetRound && refs.mapBounds && refs.playerBody &&
+        (TRAINING || refs.botBody)) {
+        st.startMatch(START_LEVEL)
+      }
+      return
+    }
+    if (TRAINING || st.spawnEditorOpen) return
     const now = performance.now() / 1000
 
     if (st.phase === 'buy' && now >= live.buyEnd) {
