@@ -168,7 +168,7 @@ function BotGun({ gunRef, flashRef, weapon }) {
   )
   return (
     <group ref={gunRef}>
-      {weapon === 'pistol' ? (
+      {(WEAPONS[weapon]?.slot === 'secondary') ? (
         <>
           {m([0, 0.04, 0.12], [0.09, 0.095, 0.28], '#222831')}
           {m([0, -0.08, 0], [0.07, 0.24, 0.10], '#30353a')}
@@ -182,8 +182,8 @@ function BotGun({ gunRef, flashRef, weapon }) {
         </>
       )}
       <mesh ref={flashRef} position={weapon === 'pistol' ? [0, 0.05, 0.29] : [0, 0.01, 0.72]} visible={false}>
-        <planeGeometry args={[0.35, 0.35]} />
-        <meshBasicMaterial color="#ffd27a" transparent blending={THREE.AdditiveBlending} side={THREE.DoubleSide} />
+        <planeGeometry args={[0.10, 0.10]} />
+        <meshBasicMaterial color="#ffd27a" opacity={0.5} transparent blending={THREE.AdditiveBlending} side={THREE.DoubleSide} />
       </mesh>
     </group>
   )
@@ -348,7 +348,7 @@ export default function Bot() {
       }
     }
     st.flashUntil = now() + 0.05
-    play(weapon.id === 'rifle' ? 'rifle_shot' : 'pistol_shot', {
+    play(weapon.sound || (weapon.slot === 'secondary' ? 'pistol_shot' : 'rifle_shot'), {
       volume: THREE.MathUtils.clamp(1 - dist / 90, 0.15, 0.7),
       rate: 0.94 + Math.random() * 0.09,
     })
