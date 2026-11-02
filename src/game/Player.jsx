@@ -7,6 +7,7 @@ import { live, refs, useGame } from '../store'
 import { camBegin, camEnd, emit } from '../fx'
 import { play } from '../audio'
 import { useKeys } from './useKeys'
+import { isNewJump, shouldStep, MAX_AUTO_STEP } from './MovementRules.js'
 
 export default function Player() {
   const body = useRef()
@@ -22,6 +23,8 @@ export default function Player() {
     groundRay: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 }),
     ledgeRay: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: -1 }),
     nextMantle: 0,
+    jumpHeld: false,
+    stepViewOffset: 0,
     eye: CFG.eyeStand,
     vel: { x: 0, y: 0, z: 0 },
     nextStep: 0,
@@ -48,6 +51,8 @@ export default function Player() {
     const dt = Math.min(delta, 0.05)
     const k = keys.current
     const active = live.locked && !live.dead
+    const jumpPressed = isNewJump(!!k.Space, tmp.jumpHeld, active)
+    tmp.jumpHeld = !!(active && k.Space)
 
     camBegin(camera, dt)
 
@@ -102,35 +107,54 @@ export default function Player() {
     const hasInput = tmp.wish.lengthSq() > 0
     if (hasInput) tmp.wish.normalize()
 
-    // Space + forward: climb an actual low ledge, never teleport through a tall wall.
-    // All probes consult the current Rapier map collision, not the GLB visual bounds.
-    if (active && grounded && k.Space && iz > 0 && performance.now() / 1000 >= tmp.nextMantle) {
-      const fwdX = tmp.fwd.x, fwdZ = tmp.fwd.z
+    // Walk over real low steps automatically, with collision probes on both sides
+    // of the landing. High ledges still require a fresh Space press while moving.
+    // Stepping is deliberately limited to the same walkable map floor.
+    if (active && grounded && hasInput && performance.now() / 1000 >= tmp.nextMantle) {
+      const dx = tmp.wish.x, dz = tmp.wish.z
       const ray = tmp.ledgeRay
       const notSelf = (c) => c.parent()?.handle !== rb.handle
-      const cast = (x, y, z, dx, dy, dz, length) => {
+      const cast = (x, y, z, vx, vy, vz, length, withNormal = false) => {
         ray.origin.x = x; ray.origin.y = y; ray.origin.z = z
-        ray.dir.x = dx; ray.dir.y = dy; ray.dir.z = dz
-        return world.castRay(ray, length, true, undefined, undefined, undefined, undefined, notSelf)
+        ray.dir.x = vx; ray.dir.y = vy; ray.dir.z = vz
+        return withNormal
+          ? world.castRayAndGetNormal(ray, length, true, undefined, undefined, undefined, undefined, notSelf)
+          : world.castRay(ray, length, true, undefined, undefined, undefined, undefined, notSelf)
       }
-      const lowWall = cast(pos.x, pos.y - 0.34, pos.z, fwdX, 0, fwdZ, 0.85)
-      const topOpen = !cast(pos.x, pos.y + 0.62, pos.z, fwdX, 0, fwdZ, 1.15)
-      if (lowWall && topOpen) {
-        const x = pos.x + fwdX * 1.04
-        const z = pos.z + fwdZ * 1.04
-        ray.origin.x = x; ray.origin.y = pos.y + 1.45; ray.origin.z = z
-        ray.dir.x = 0; ray.dir.y = -1; ray.dir.z = 0
-        const floor = world.castRayAndGetNormal(ray, 2.5, true, undefined, undefined, undefined, undefined, notSelf)
+      const low = cast(pos.x, pos.y - 0.69, pos.z, dx, 0, dz, 0.72)
+      const upper = !cast(pos.x, pos.y + 0.28, pos.z, dx, 0, dz, 1.05)
+      if (low && upper) {
+        // The capsule must finish completely past the stair riser.
+        const distance = Math.min(0.87, Math.max(0.57, low.timeOfImpact + CFG.capsuleRadius + 0.13))
+        const x = pos.x + dx * distance
+        const z = pos.z + dz * distance
+        const top = pos.y + 1.12
+        const floor = cast(x, top, z, 0, -1, 0, 2.2, true)
         if (floor && floor.normal.y >= 0.72) {
-          const groundY = pos.y + 1.45 - floor.timeOfImpact
-          const centerY = groundY + CFG.capsuleHalfHeight + CFG.capsuleRadius + 0.05
-          const climb = centerY - pos.y
-          const headroom = !cast(x, groundY + 0.07, z, 0, 1, 0, CFG.capsuleHalfHeight * 2 + CFG.capsuleRadius * 2 + 0.22)
-          if (climb >= 0.23 && climb <= 0.88 && headroom) {
+          const groundY = top - floor.timeOfImpact
+          const rise = groundY + CFG.capsuleHalfHeight + CFG.capsuleRadius + 0.05 - pos.y
+          const deliberateJump = jumpPressed && iz > 0 && rise > MAX_AUTO_STEP
+          const headClear = !cast(x, groundY + 0.1, z, 0, 1, 0,
+            CFG.capsuleHalfHeight * 2 + CFG.capsuleRadius * 2 + 0.25)
+          let stableLanding = true
+          // Reject narrow rails, absent landing floor and unsafe ledge edges.
+          const sideX = -dz, sideZ = dx
+          for (const [ox, oz] of [[sideX * 0.17, sideZ * 0.17], [-sideX * 0.17, -sideZ * 0.17],
+            [dx * 0.16, dz * 0.16], [-dx * 0.12, -dz * 0.12]]) {
+            const h = cast(x + ox, top, z + oz, 0, -1, 0, 2.2, true)
+            if (!h || h.normal.y < 0.72 || Math.abs((top - h.timeOfImpact) - groundY) > 0.2) {
+              stableLanding = false
+              break
+            }
+          }
+          if (shouldStep({ rise, forwardBlocked: true, upperClear: upper,
+            stableLanding, headClear, deliberateJump })) {
+            const centerY = groundY + CFG.capsuleHalfHeight + CFG.capsuleRadius + 0.05
             rb.setTranslation({ x, y: centerY, z }, true)
-            rb.setLinvel({ x: fwdX * CFG.walkSpeed * 0.45, y: 0, z: fwdZ * CFG.walkSpeed * 0.45 }, true)
-            camera.position.set(x, centerY + tmp.eye, z)
-            tmp.nextMantle = performance.now() / 1000 + 0.7
+            rb.setLinvel({ x: dx * CFG.walkSpeed * 0.45, y: 0, z: dz * CFG.walkSpeed * 0.45 }, true)
+            tmp.stepViewOffset -= rise
+            camera.position.set(x, centerY + tmp.eye + tmp.stepViewOffset, z)
+            tmp.nextMantle = performance.now() / 1000 + (deliberateJump ? 0.45 : 0.10)
             live.grounded = true
             return
           }
@@ -147,14 +171,15 @@ export default function Player() {
     const vx = vel.x + (tx - vel.x) * f
     const vz = vel.z + (tz - vel.z) * f
     let vy = vel.y
-    if (grounded && active && k.Space) vy = CFG.jumpVelocity
+    if (grounded && jumpPressed) vy = CFG.jumpVelocity
 
     tmp.vel.x = vx; tmp.vel.y = vy; tmp.vel.z = vz
     rb.setLinvel(tmp.vel, true)
 
     const eyeTarget = live.dead ? CFG.eyeDead : crouch ? CFG.eyeCrouch : CFG.eyeStand
     tmp.eye += (eyeTarget - tmp.eye) * (1 - Math.exp(-CFG.eyeLerp * dt))
-    camera.position.set(pos.x, pos.y + tmp.eye, pos.z)
+    tmp.stepViewOffset *= Math.exp(-14 * dt)
+    camera.position.set(pos.x, pos.y + tmp.eye + tmp.stepViewOffset, pos.z)
 
     // 이동 탄 퍼짐 (클래식 브레이킹)
     const speed = Math.hypot(vx, vz)

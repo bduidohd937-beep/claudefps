@@ -453,7 +453,7 @@ export default function Bot() {
     g.position.set(p.x, p.y - 0.8, p.z)
 
     // 교전 중(포인터락 + live 단계)에만 행동. 일시정지/구매/상점 중에는 정지
-    const active = !st.dead && live.phase === 'live' && live.locked && !live.dead
+    const active = !st.dead && live.phase === 'live' && live.locked && !live.dead && t >= game.spawnProtectionUntil
     const pp = refs.playerBody?.translation()
     const v = b.linvel()
     let dirx = 0, dirz = 0, spd = 0, hop = false

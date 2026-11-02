@@ -5,7 +5,7 @@ import { CFG, MATCH, SPAWNS, TRAINING, AUTO_ENTER, START_LEVEL, DYNAMIC_SPAWNS, 
 import { live, refs, useGame } from '../store'
 import { enemies } from '../enemies'
 import { cam, on } from '../fx'
-import { exposedAtCloseRange, exposedWithoutCover, spawnScore } from './SpawnSafety.js'
+import { exposedAtCloseRange, exposedWithoutCover, spawnScore, spawnHasEscape } from './SpawnSafety.js'
 
 // 라운드 진행 로직: 라운드 리셋, 구매 타이머, 승패 판정, 킬 보상, 스폰 저장 단축키
 export default function Match() {
@@ -34,6 +34,30 @@ export default function Match() {
       }
       const height = CFG.capsuleHalfHeight * 2 + CFG.capsuleRadius * 2
       return !cast([x, groundY + 0.05, z], [0, 1, 0], height + 0.15)
+    }
+
+    // Probe the landing at five foot points and check multiple same-height escape lanes.
+    // A narrow roof edge or a wall-enclosed corner is not a good duel spawn.
+    const spawnQuality = (x, groundY, z) => {
+      let supported = 0
+      for (const [ox, oz] of [[0, 0], [0.23, 0], [-0.23, 0], [0, 0.23], [0, -0.23]]) {
+        const top = groundY + 0.85
+        const h = cast([x + ox, top, z + oz], [0, -1, 0], 1.25, true)
+        if (h && h.normal.y >= 0.72 && Math.abs(top - h.timeOfImpact - groundY) <= 0.22) supported++
+      }
+      let exits = 0
+      for (let i = 0; i < 8; i++) {
+        const angle = (Math.PI * 2 * i) / 8
+        const dx = Math.cos(angle), dz = Math.sin(angle)
+        const length = 1.35
+        const y = groundY + CFG.capsuleHalfHeight + CFG.capsuleRadius + 0.2
+        if (cast([x, y, z], [dx, 0, dz], length)) continue
+        const top = groundY + 1.0
+        const h = cast([x + dx * length, top, z + dz * length], [0, -1, 0], 1.55, true)
+        if (!h || h.normal.y < 0.72 || Math.abs(top - h.timeOfImpact - groundY) > 0.45) continue
+        exits++
+      }
+      return { supported, exits }
     }
 
     const resolve = (requested, avoid = null, maxRing = 8, minimumDistance = CFG.spawnMinDistance) => {
@@ -99,6 +123,8 @@ export default function Match() {
         // 다른 층이나 지붕은 다른 네비게이션 영역일 수 있으므로 제외.
         if (Math.abs(centerY - base[1]) > 2.0) continue
         if (!hasClearance(x, floorY, z)) continue
+        const access = spawnQuality(x, floorY, z)
+        if (!spawnHasEscape(access.supported, access.exits)) continue
         // Prefer a different part of the playable floor, without instant line-of-sight spawn fights.
         const recentDistance = previous ? Math.hypot(x - previous[0], z - previous[2]) : radius
         const opponentDistance = avoid ? Math.hypot(x - avoid[0], z - avoid[2]) : minimumDistance * 2
@@ -120,7 +146,7 @@ export default function Match() {
           !!cast([x, centerY + 0.4, z], [cx, 0, cz], 5.5))
         if (avoid && exposedWithoutCover(opponentDistance, span, cover)) continue
         const score = spawnScore(recentDistance, opponentDistance, radius,
-          Math.random() * 2, cover ? 5 : 0)
+          Math.random() * 2, (cover ? 5 : 0) + Math.min(access.exits, 5) * 0.55)
         valid.push({ pos: [x, centerY, z], score })
       }
       valid.sort((a, b) => b.score - a.score)
