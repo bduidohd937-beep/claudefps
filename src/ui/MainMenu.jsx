@@ -25,6 +25,9 @@ export default function MainMenu() {
     const n = Number(new URLSearchParams(window.location.search).get('level'))
     return Number.isInteger(n) && n >= 1 && n <= 5 ? n : 3
   })
+  const [dynamicSpawns, setDynamicSpawns] = useState(
+    () => new URLSearchParams(window.location.search).get('spawnMode') !== 'fixed',
+  )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [showOptions, setShowOptions] = useState(false)
@@ -57,6 +60,7 @@ export default function MainMenu() {
     target.searchParams.set('map', selected)
     target.searchParams.set('level', String(level))
     target.searchParams.set('enter', '1')
+    target.searchParams.set('spawnMode', dynamicSpawns ? 'dynamic' : 'fixed')
     target.searchParams.delete('spawn')
     target.searchParams.delete('bot')
     window.location.assign(target.toString())
@@ -67,7 +71,7 @@ export default function MainMenu() {
       <div className="lobby-glow" aria-hidden="true" />
       <header className="lobby-top">
         <div className="lobby-brand"><span className="lobby-brand-mark">C<span>:</span></span> CLAUDE<span>FPS</span></div>
-        <div className="lobby-build">CLASSIC DUEL <b>V0.2.6</b></div>
+        <div className="lobby-build">CLASSIC DUEL <b>V0.2.7</b></div>
       </header>
 
       <section className="lobby-body" aria-label="FPS 시작 화면">
@@ -130,6 +134,15 @@ export default function MainMenu() {
             </div>
           </div>
 
+          <label className="lobby-spawn-row">
+            <input type="checkbox" checked={dynamicSpawns}
+              onChange={(e) => setDynamicSpawns(e.target.checked)} />
+            <span>
+              <strong>라운드마다 안전 스폰 변경</strong>
+              <small>맵별로 지면을 검사해 매 라운드 위치를 바꿈. 끄면 기존 스폰 유지.</small>
+            </span>
+          </label>
+
           <div className="lobby-options">
             <button type="button" className="lobby-options-trigger" aria-expanded={showOptions}
               onClick={() => setShowOptions((v) => !v)}>
@@ -144,7 +157,7 @@ export default function MainMenu() {
           </div>
 
           <div className="lobby-action">
-            <div className="lobby-selection">선택된 전장 <b>{selectedMap.label}</b><br />{TRAINING ? '사격 연습' : MATCH.winScore + '선승 · AI Lv.' + level}</div>
+            <div className="lobby-selection">선택된 전장 <b>{selectedMap.label}</b><br />{TRAINING ? '사격 연습' : MATCH.winScore + '선승 · AI Lv.' + level + (dynamicSpawns ? ' · 랜덤 스폰' : ' · 고정 스폰')}</div>
             <button className="lobby-enter" type="button" disabled={busy} onClick={enterGame}>
               {busy ? '전장 확인 중...' : '입장하기'} <span aria-hidden="true">→</span>
             </button>

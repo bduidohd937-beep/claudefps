@@ -82,6 +82,11 @@
 .lobby-difficulties button.active { border-color: #f29454; background: #bb6330; color: white; }
 .lobby-difficulties strong { font-size: 17px; }
 .lobby-difficulties small { font-size: 10px; }
+.lobby-spawn-row { display:flex; align-items:center; gap:12px; border:1px solid #3b4653; border-radius:6px; padding:13px; margin-top:20px; cursor:pointer; background:#1b2530; }
+.lobby-spawn-row input { flex:none; width:17px; height:17px; accent-color:#ef8b46; }
+.lobby-spawn-row span { display:grid; gap:4px; }
+.lobby-spawn-row strong { font-size:12px; color:#f1f4f6; }
+.lobby-spawn-row small { font-size:11px; color:#9daab6; line-height:1.5; }
 .lobby-options { border-top: 1px solid #394350; padding-top: 14px; margin-top: 21px; }
 .lobby-options-trigger { display:flex; justify-content:space-between; width:100%; background:transparent; border:0; color:#cbd3dc; font:600 13px inherit; padding: 0; cursor:pointer; }
 .lobby-options-trigger span:last-child { color:#f6a365; }

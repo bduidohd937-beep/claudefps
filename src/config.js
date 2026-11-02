@@ -1,6 +1,8 @@
 // 모든 튜닝 값은 여기서 조절합니다. (단위: m, s, 도(deg))
 const params = new URLSearchParams(window.location.search)
 export const AUTO_ENTER = params.get('enter') === '1'
+// 라운드 사이에만 안전한 근접 스폰을 무작위 선택. 1:1 경기 중 즉시 부활은 하지 않음.
+export const DYNAMIC_SPAWNS = params.get('spawnMode') !== 'fixed'
 const levelParam = Number(params.get('level'))
 export const START_LEVEL = Number.isInteger(levelParam) && levelParam >= 1 && levelParam <= 5
   ? levelParam : 3
