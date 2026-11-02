@@ -16,13 +16,18 @@ import HUD from './ui/HUD'
 
 function Controls() {
   const ref = useRef()
+  const lastUnlockAt = useRef(-Infinity)
   const sensitivity = useGame((s) => s.sensitivity)
   const setLocked = useGame((s) => s.setLocked)
 
   useEffect(() => {
-    useGame.setState({ lock: () => ref.current?.lock() })
+    // Chrome blocks re-locking immediately after unlock; only request it on a fresh user click.
+    useGame.setState({ lock: () => {
+      if (performance.now() - lastUnlockAt.current < 1200) return
+      if (!document.pointerLockElement) ref.current?.lock()
+    } })
     refs.unlock = () => ref.current?.unlock()
-    return () => { refs.unlock = null }
+    return () => { refs.unlock = null; useGame.setState({ lock: () => {} }) }
   }, [])
 
   return (
@@ -32,7 +37,7 @@ function Controls() {
       minPolarAngle={0.05}
       maxPolarAngle={Math.PI - 0.05}
       onLock={() => { live.locked = true; setLocked(true) }}
-      onUnlock={() => { live.locked = false; live.firing = false; setLocked(false) }}
+      onUnlock={() => { lastUnlockAt.current = performance.now(); live.locked = false; live.firing = false; setLocked(false) }}
     />
   )
 }
