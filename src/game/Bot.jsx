@@ -355,6 +355,14 @@ export default function Bot() {
       const tx = camera.position.x - cx, ty = camera.position.y - ey, tz = camera.position.z - cz
       const dist = Math.hypot(tx, ty, tz)
       if (hasLos(cx, ey, cz, tx, ty, tz, dist)) continue // 여전히 보임
+      // A tactical cover point must have a standable floor at the bot's current level.
+      const ray = tmp.groundRay
+      ray.origin.x = cx; ray.origin.y = p.y + 1.25; ray.origin.z = cz
+      ray.dir.x = 0; ray.dir.y = -1; ray.dir.z = 0
+      const floor = world.castRayAndGetNormal(ray, 3.0, true, undefined, undefined, undefined, undefined, tmp.notBot)
+      if (!floor || floor.normal.y < 0.72) continue
+      const floorY = ray.origin.y - floor.timeOfImpact
+      if (Math.abs(floorY - (p.y - CFG.capsuleHalfHeight - CFG.capsuleRadius)) > 0.55) continue
       if (r < bestD) { bestD = r; best = { x: cx, z: cz } }
     }
     return best
