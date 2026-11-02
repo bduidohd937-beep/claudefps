@@ -11,6 +11,7 @@ import { absorbArmor } from '../economy'
 import { enemies, targetMeshes } from '../enemies'
 import { play } from '../audio'
 import { on } from '../fx'
+import { canBotFire, investigationTarget, validStepHeight } from './AITactics.js'
 import { spawnImpact } from './Impacts'
 
 useGLTF.preload(BOT_MODEL_URL)
@@ -462,7 +463,7 @@ export default function Bot() {
         st.seen = false
       }
       // Never fire on stale sight / through walls just because a target was seen earlier.
-      const canShoot = st.los && st.seen && t - st.seenAt >= cfg.react
+      const canShoot = canBotFire({ visible: st.los, spotted: st.seen, seenAt: st.seenAt, time: t, reaction: cfg.react })
 
       // ── 이동 의도 ──
       if (st.state === 'cover' && st.coverPos) {
@@ -472,7 +473,8 @@ export default function Bot() {
         else { dirx = cx / cd; dirz = cz / cd; spd = cfg.speed * 1.15 }
       } else if (!st.los) {
         // Investigate the last visible/heard location, NOT the current player coordinates.
-        let goal = t < st.investigateUntil ? st.lastKnown : null
+        let goal = investigationTarget({ visible: st.los, lastKnown: st.lastKnown,
+          investigateUntil: st.investigateUntil, patrolGoal: null, time: t })
         if (goal && Math.hypot(goal.x - p.x, goal.z - p.z) < 1.7) {
           st.investigateUntil = 0
           st.lastKnown = null
@@ -528,7 +530,7 @@ export default function Bot() {
             const floor = world.castRayAndGetNormal(ray, 2.4, true, undefined, undefined, undefined, undefined, tmp.notBot)
             if (floor && floor.normal.y > 0.72) {
               const centerY = ray.origin.y - floor.timeOfImpact + CFG.capsuleHalfHeight + CFG.capsuleRadius
-              if (centerY - p.y > 0.18 && centerY - p.y < 0.9) {
+              if (validStepHeight(centerY - p.y)) {
                 const ground = world.castRay(
                   new rapier.Ray({ x: p.x, y: p.y, z: p.z }, { x: 0, y: -1, z: 0 }),
                   0.97, true, undefined, undefined, undefined, undefined, tmp.notBot,
