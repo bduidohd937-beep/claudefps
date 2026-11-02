@@ -192,7 +192,7 @@ export default function WeaponSystem() {
     live.crossKick = 1
     live.fireSpread = Math.min(live.fireSpread + w.fireSpread, w.fireSpreadMax)
     t.flashUntil = now + 0.05
-    play('gun_shot', { rate: 0.95 + Math.random() * 0.1 })
+    play(w.id === 'rifle' ? 'rifle_shot' : 'pistol_shot', { rate: 0.95 + Math.random() * 0.1 })
     apis[w.id].current?.play('fire', { timeScale: VM[w.id].fireSpeed || 1, fade: 0.02, restart: true })
 
     if (a.mag - 1 <= 0) startReload() // 탄창이 비면 자동 재장전

@@ -68,6 +68,9 @@ export const CFG = {
   vmFov: 62, // 1인칭 총기 전용 카메라 FOV
   gravity: -20,
   killY: -60,
+  spawnProbeTop: 40,
+  spawnProbeDepth: 120,
+  spawnMinDistance: 8,
 
   capsuleHalfHeight: 0.45,
   capsuleRadius: 0.35,
