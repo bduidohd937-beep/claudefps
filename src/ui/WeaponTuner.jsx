@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { live, useGame } from '../store'
 import { VM } from '../game/ViewModels'
 
-const defaultTune = () => ({ x: 0, y: 0, z: 0, s: 1, rx: 0, ry: 0 })
+const defaultTune = () => ({ x: 0, y: 0, z: 0, s: 1, rx: 0, ry: 0, rz: 0 })
 const options = [
   { key: 'x', label: '좌우 X', min: -2, max: 2, step: 0.01 },
   { key: 'y', label: '상하 Y', min: -2, max: 2, step: 0.01 },
@@ -10,6 +10,7 @@ const options = [
   { key: 's', label: '배율', min: 0.02, max: 20, step: 0.02 },
   { key: 'rx', label: '상하 회전 X', min: -3.14, max: 3.14, step: 0.02 },
   { key: 'ry', label: '좌우 회전 Y', min: -3.14, max: 3.14, step: 0.02 },
+  { key: 'rz', label: '좌우 기울기 Z (롤)', min: -3.14, max: 3.14, step: 0.02 },
 ]
 function saveTune() {
   try { localStorage.setItem('claudefps.vmtune', JSON.stringify(live.vmTune)) } catch {}
@@ -38,6 +39,9 @@ export default function WeaponTuner() {
     saveTune()
   }
   const displayWeapon = (id) => {
+    const state = useGame.getState()
+    // During a match, preview only weapons the player actually owns.
+    if (state.phase !== 'menu' && !state.owned[id]) return
     live.weapon = id
     useGame.setState({ weapon: id })
   }
@@ -54,12 +58,14 @@ export default function WeaponTuner() {
         <button style={button} onClick={() => setOpen(false)}>닫기</button>
       </div>
       <p style={{ fontSize: 12, color: '#b8c1cb', lineHeight: 1.5 }}>
-        원본 GLB 애니메이션 유지 · 조정하는 즉시 화면에 반영 · 브라우저에 저장
+        원본 GLB 애니메이션 유지 · 즉시 반영 · 무기별 브라우저 저장
       </p>
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         {['rifle', 'pistol', 'knife'].map((id) => (
-          <button key={id} onClick={() => displayWeapon(id)}
-            style={{ ...button, background: weapon === id ? '#a75822' : '#303942', flex: 1 }}>
+          <button key={id} disabled={useGame.getState().phase !== 'menu' && !useGame.getState().owned[id]}
+            onClick={() => displayWeapon(id)}
+            style={{ ...button, opacity: useGame.getState().phase !== 'menu' && !useGame.getState().owned[id] ? 0.45 : 1,
+              background: weapon === id ? '#a75822' : '#303942', flex: 1 }}>
             {{ rifle: 'AK', pistol: '권총', knife: '나이프' }[id]}
           </button>
         ))}
@@ -83,8 +89,8 @@ export default function WeaponTuner() {
           onClick={() => setOpen(false)}>설정 저장·닫기</button>
       </div>
       <p style={{ fontSize: 11, color: '#b8c1cb' }}>
-        원본을 자르거나 메쉬를 삭제하지 않음. 총기가 화면에서 사라지면 Z를 더 음수로 조정하고
-        배율을 줄여 확인하세요. 기존 AK 위치는 변경하지 않습니다.
+        좌우 기울기(Z축 롤)로 총을 화면 안쪽으로 눕히고, 앞뒤 Z 값을 더 음수로 하면
+        카메라에서 멀어집니다. 숫자 조정은 무기별로 저장되며 초기화할 수 있습니다.
       </p>
     </section>
   )

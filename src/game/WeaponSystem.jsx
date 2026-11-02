@@ -15,7 +15,7 @@ import { VM, FALLBACK_BASE, VMSlot, VMRenderer } from './ViewModels'
 const DEG = Math.PI / 180
 const nowSec = () => performance.now() / 1000
 const TUNE_KEY = 'claudefps.vmtune'
-const blankTune = () => ({ x: 0, y: 0, z: 0, s: 1, rx: 0, ry: 0 })
+const blankTune = () => ({ x: 0, y: 0, z: 0, s: 1, rx: 0, ry: 0, rz: 0 })
 
 try {
   const saved = JSON.parse(localStorage.getItem(TUNE_KEY) || '{}')
@@ -304,7 +304,7 @@ export default function WeaponSystem() {
     t.e.set(
       tn.rx + live.viewKick * 0.045 - dip * 0.9 - dp * 0.8 - live.swing * 0.5,
       (fb ? 0 : def.rotY) + tn.ry,
-      dip * 0.5 + live.swing * 0.7,
+      (tn.rz ?? 0) + dip * 0.5 + live.swing * 0.7,
     )
     wrap.quaternion.setFromEuler(t.e)
     wrap.scale.setScalar((fb ? 1 : def.scale) * tn.s)

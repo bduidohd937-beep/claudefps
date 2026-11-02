@@ -26,11 +26,12 @@ export const useGame = create((set, get) => ({
   tunerOpen: false,
   setTunerOpen: (open) => {
     live.tuner = open
-    set({ tunerOpen: open })
+    set(open ? { tunerOpen: true, spawnEditorOpen: false } : { tunerOpen: false })
     if (open) refs.unlock?.()
   },
   setSpawnEditorOpen: (open) => {
-    set({ spawnEditorOpen: open })
+    set(open ? { spawnEditorOpen: true, tunerOpen: false } : { spawnEditorOpen: false })
+    if (open) live.tuner = false
     if (open) refs.unlock?.()
   },
   sensitivity: readSens(),

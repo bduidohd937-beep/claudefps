@@ -401,6 +401,9 @@ function Menu({ pause }) {
         ) : (
           <button className="start" onClick={start}>{TRAINING ? '연습 시작' : '매치 시작'}</button>
         )}
+        <button className="ghost" onClick={() => useGame.getState().setTunerOpen(true)}>
+          무기 모델 위치·기울기 조정 (F2)
+        </button>
         <button className="ghost" onClick={() => useGame.getState().setSpawnEditorOpen(true)}>
           스폰 좌표 직접 설정 (F6)
         </button>
@@ -471,9 +474,9 @@ export default function HUD() {
       {playing && <Ammo />}
       <Scoreboard />
       <RoundBanner />
-      {phase === 'menu' && <Menu />}
+      {phase === 'menu' && !tunerOpen && !spawnEditorOpen && <Menu />}
       {showPause && <Menu pause />}
-      {shopOpen && !spawnEditorOpen && (phase === 'buy' || phase === 'live') && <Shop />}
+      {shopOpen && !spawnEditorOpen && !tunerOpen && (phase === 'buy' || phase === 'live') && <Shop />}
       <MatchEnd />
       <SpawnEditor />
       <WeaponTuner />
