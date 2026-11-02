@@ -481,8 +481,8 @@ export default function Bot() {
           goal = null
         }
         if (!goal) {
-          if (!st.patrolGoal || t >= st.nextPatrol ||
-            Math.hypot(st.patrolGoal.x - p.x, st.patrolGoal.z - p.z) < 1.5) {
+          if (t >= st.nextPatrol || (st.patrolGoal &&
+            Math.hypot(st.patrolGoal.x - p.x, st.patrolGoal.z - p.z) < 1.5)) {
             st.patrolGoal = choosePatrol(p)
             st.nextPatrol = t + rand(4, 8)
           }
