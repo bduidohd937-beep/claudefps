@@ -1,4 +1,4 @@
-import { Component, Suspense, useEffect, useMemo } from 'react'
+import { Component, useEffect, useMemo } from 'react'
 import { RigidBody } from '@react-three/rapier'
 import { useGLTF } from '@react-three/drei'
 import { ACTIVE_MAP } from '../config'
@@ -91,10 +91,9 @@ export default function GameMap() {
   if (!ACTIVE_MAP.url) return <Arena />
   return (
     <MapBoundary>
-      {/* Do not expose a temporary arena collider as the external map loads: Match may start at wrong bounds. */}
-      <Suspense fallback={null}>
-        <GlbMap url={ACTIVE_MAP.url} scale={ACTIVE_MAP.scale} />
-      </Suspense>
+      {/* Let App's outer Suspense hold the entire Physics world until this GLB is ready.
+          That prevents players and the bot from falling before map colliders exist. */}
+      <GlbMap url={ACTIVE_MAP.url} scale={ACTIVE_MAP.scale} />
     </MapBoundary>
   )
 }
