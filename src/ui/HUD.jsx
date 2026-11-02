@@ -7,6 +7,7 @@ import { on } from '../fx'
 import { initAudio } from '../audio'
 import SpawnEditor from './SpawnEditor'
 import WeaponTuner from './WeaponTuner'
+import MapSelector from './MapSelector'
 
 const STATE_LABEL = { stand: '정지', walk: '걷기', run: '달리기', crouch: '앉기', air: '공중' }
 
@@ -364,6 +365,7 @@ function Menu({ pause }) {
       <div className="panel">
         <h1>claudefps</h1>
         <p className="sub">{pause ? '일시정지' : `1 vs 1 · ${MATCH.winScore}라운드 선승제`}</p>
+        <MapSelector />
 
         {!pause && !TRAINING && (
           <div className="diff">
@@ -403,7 +405,7 @@ function Menu({ pause }) {
           스폰 좌표 직접 설정 (F6)
         </button>
         <p className="hint">
-          맵은 주소 뒤에 ?map=pvp 또는 ?map=offense를 붙여 선택합니다.
+          메뉴의 맵 선택에서 사용 가능한 맵을 고를 수 있습니다.
           F6으로 플레이어·AI의 스폰 좌표를 직접 설정할 수 있습니다.
         </p>
       </div>
