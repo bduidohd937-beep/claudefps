@@ -10,6 +10,7 @@ import { WEAPONS, calcDamage } from '../weapons'
 import { absorbArmor } from '../economy'
 import { enemies, targetMeshes } from '../enemies'
 import { play } from '../audio'
+import { on } from '../fx'
 import { spawnImpact } from './Impacts'
 
 useGLTF.preload(BOT_MODEL_URL)
@@ -208,6 +209,7 @@ export default function Bot() {
   const tmp = useMemo(() => ({
     losRay: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }),
     probeRay: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }),
+    groundRay: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 }),
     mid: new THREE.Vector3(),
     notBot: (c) => c.parent()?.handle !== body.current?.handle,
   }), [rapier])
@@ -218,6 +220,8 @@ export default function Bot() {
     state: 'seek', nextShot: 0, burstLeft: 0, restUntil: 0, reloadUntil: 0, aimHead: false,
     strafe: 1, strafeUntil: 0, coverPos: null, coverUntil: 0, nextCover: 0,
     hurtAt: -9, stuckAt: 0, stuckX: 0, stuckZ: 0, unstuckUntil: 0, ux: 0, uz: 0, flashUntil: 0,
+    lastKnown: null, heardAt: -9, investigateUntil: 0, nextHear: 0,
+    patrolGoal: null, nextPatrol: 0, nextHop: 0,
   })
 
   // 레지스트리 등록 (플레이어 사격 판정이 사용)
@@ -237,6 +241,8 @@ export default function Bot() {
         st.hurtAt = now()
         // 맞으면 즉시 플레이어를 인지
         if (!st.seen) { st.seen = true; st.seenAt = now() - 0.3 }
+        const target = refs.playerBody?.translation()
+        if (target) { st.lastKnown = { x: target.x, z: target.z }; st.investigateUntil = now() + 5 }
         st.lastSeen = now()
         if (st.hp === 0) {
           st.dead = true
@@ -247,6 +253,23 @@ export default function Bot() {
         }
         return { killed: false }
       },
+    })
+    const offNoise = on('combatNoise', ({ position, radius, kind }) => {
+      const b = body.current
+      if (!b || st.dead || live.phase !== 'live' || !Array.isArray(position)) return
+      const p = b.translation()
+      const distance = Math.hypot(p.x - position[0], p.y - position[1], p.z - position[2])
+      const time = now()
+      if (distance > radius || (kind === 'footstep' && time < st.nextHear)) return
+      // Inexact hearing: a gunshot is more informative than a distant footstep.
+      const uncertainty = Math.min(kind === 'gunshot' ? 2.6 : 5, 0.6 + distance * 0.09)
+      st.lastKnown = {
+        x: position[0] + rand(-uncertainty, uncertainty),
+        z: position[2] + rand(-uncertainty, uncertainty),
+      }
+      st.heardAt = time
+      st.investigateUntil = time + (kind === 'gunshot' ? 7 : 4)
+      st.nextHear = time + (kind === 'gunshot' ? 0.8 : 0.55)
     })
     const ms = [head.current, torso.current, legs.current]
     ms.forEach((m) => targetMeshes.push(m))
@@ -259,7 +282,8 @@ export default function Bot() {
         lastSeen: -9, los: false, nextLos: 0, state: 'seek', nextShot: 0, reloadUntil: 0,
         burstLeft: 0, restUntil: 0, aimHead: false, coverPos: null, coverUntil: 0,
         nextCover: 0, hurtAt: -9, speed: 0, stuckAt: 0, unstuckUntil: 0,
-        flashUntil: 0,
+        flashUntil: 0, lastKnown: null, heardAt: -9, investigateUntil: 0,
+        nextHear: 0, patrolGoal: null, nextPatrol: 0, nextHop: 0,
       })
       if (b) {
         b.setEnabled(true)
@@ -268,6 +292,7 @@ export default function Bot() {
       }
     }
     return () => {
+      offNoise()
       enemies.delete('bot')
       refs.resetBot = null
       ms.forEach((m) => {
