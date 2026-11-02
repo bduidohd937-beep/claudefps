@@ -5,6 +5,7 @@ import { WEAPONS } from '../weapons'
 import { SHOP } from '../shop'
 import { on } from '../fx'
 import { initAudio } from '../audio'
+import SpawnEditor from './SpawnEditor'
 
 const STATE_LABEL = { stand: '정지', walk: '걷기', run: '달리기', crouch: '앉기', air: '공중' }
 
@@ -386,6 +387,7 @@ function Menu({ pause }) {
           <kbd>1 2 3</kbd><span>주무기 / 권총 / 나이프</span>
           <kbd>B</kbd><span>상점</span>
           <kbd>Esc</kbd><span>일시정지</span>
+          <kbd>F6</kbd><span>스폰 좌표 편집</span>
         </div>
 
         <SensSlider />
@@ -428,18 +430,28 @@ export default function HUD() {
   const locked = useGame((s) => s.locked)
   const phase = useGame((s) => s.phase)
   const shopOpen = useGame((s) => s.shopOpen)
+  const spawnEditorOpen = useGame((s) => s.spawnEditorOpen)
 
   // B키: 상점 토글 (포인터락이 풀려 있어도 동작해야 하므로 전역 리스너)
   useEffect(() => {
     const kd = (e) => {
-      if (e.code === 'KeyB' && !e.repeat) useGame.getState().toggleShop()
+      if (e.repeat) return
+      if (e.code === 'F6') {
+        e.preventDefault()
+        const st = useGame.getState()
+        st.setSpawnEditorOpen(!st.spawnEditorOpen)
+      } else if (e.code === 'Escape' && useGame.getState().spawnEditorOpen) {
+        useGame.getState().setSpawnEditorOpen(false)
+      } else if (e.code === 'KeyB' && !useGame.getState().spawnEditorOpen) {
+        useGame.getState().toggleShop()
+      }
     }
     window.addEventListener('keydown', kd)
     return () => window.removeEventListener('keydown', kd)
   }, [])
 
   const playing = phase === 'buy' || phase === 'live' || phase === 'roundEnd'
-  const showPause = !locked && !shopOpen && (phase === 'buy' || phase === 'live')
+  const showPause = !locked && !shopOpen && !spawnEditorOpen && (phase === 'buy' || phase === 'live')
   return (
     <>
       <DamageVignette />
@@ -452,8 +464,9 @@ export default function HUD() {
       <RoundBanner />
       {phase === 'menu' && <Menu />}
       {showPause && <Menu pause />}
-      {shopOpen && (phase === 'buy' || phase === 'live') && <Shop />}
+      {shopOpen && !spawnEditorOpen && (phase === 'buy' || phase === 'live') && <Shop />}
       <MatchEnd />
+      <SpawnEditor />
     </>
   )
 }
