@@ -71,7 +71,7 @@ export default function MainMenu() {
       <div className="lobby-glow" aria-hidden="true" />
       <header className="lobby-top">
         <div className="lobby-brand"><span className="lobby-brand-mark">C<span>:</span></span> CLAUDE<span>FPS</span></div>
-        <div className="lobby-build">CLASSIC DUEL <b>V0.2.6</b></div>
+        <div className="lobby-build">CLASSIC DUEL <b>V0.2.7</b></div>
       </header>
 
       <section className="lobby-body" aria-label="FPS 시작 화면">
