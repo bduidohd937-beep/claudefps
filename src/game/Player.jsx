@@ -4,7 +4,7 @@ import { CapsuleCollider, RigidBody, useRapier } from '@react-three/rapier'
 import * as THREE from 'three'
 import { CFG, SPAWNS } from '../config'
 import { live, refs, useGame } from '../store'
-import { camBegin, camEnd } from '../fx'
+import { camBegin, camEnd, emit } from '../fx'
 import { play } from '../audio'
 import { useKeys } from './useKeys'
 
@@ -20,6 +20,8 @@ export default function Player() {
     wish: new THREE.Vector3(),
     up: new THREE.Vector3(0, 1, 0),
     groundRay: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 }),
+    ledgeRay: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: -1 }),
+    nextMantle: 0,
     eye: CFG.eyeStand,
     vel: { x: 0, y: 0, z: 0 },
     nextStep: 0,
@@ -100,6 +102,40 @@ export default function Player() {
     const hasInput = tmp.wish.lengthSq() > 0
     if (hasInput) tmp.wish.normalize()
 
+    // Space + forward: climb an actual low ledge, never teleport through a tall wall.
+    // All probes consult the current Rapier map collision, not the GLB visual bounds.
+    if (active && grounded && k.Space && iz > 0 && performance.now() / 1000 >= tmp.nextMantle) {
+      const fwdX = tmp.fwd.x, fwdZ = tmp.fwd.z
+      const ray = tmp.ledgeRay
+      const notSelf = (c) => c.parent()?.handle !== rb.handle
+      const cast = (x, y, z, dx, dy, dz, length) => {
+        ray.origin.x = x; ray.origin.y = y; ray.origin.z = z
+        ray.dir.x = dx; ray.dir.y = dy; ray.dir.z = dz
+        return world.castRay(ray, length, true, undefined, undefined, undefined, undefined, notSelf)
+      }
+      const lowWall = cast(pos.x, pos.y - 0.34, pos.z, fwdX, 0, fwdZ, 0.85)
+      const topOpen = !cast(pos.x, pos.y + 0.62, pos.z, fwdX, 0, fwdZ, 1.15)
+      if (lowWall && topOpen) {
+        const x = pos.x + fwdX * 1.04
+        const z = pos.z + fwdZ * 1.04
+        const floor = cast(x, pos.y + 1.45, z, 0, -1, 0, 2.5)
+        if (floor) {
+          const groundY = pos.y + 1.45 - floor.timeOfImpact
+          const centerY = groundY + CFG.capsuleHalfHeight + CFG.capsuleRadius + 0.05
+          const climb = centerY - pos.y
+          const headroom = !cast(x, groundY + 0.07, z, 0, 1, 0, CFG.capsuleHalfHeight * 2 + CFG.capsuleRadius * 2 + 0.22)
+          if (climb >= 0.23 && climb <= 0.88 && headroom) {
+            rb.setTranslation({ x, y: centerY, z }, true)
+            rb.setLinvel({ x: fwdX * CFG.walkSpeed * 0.45, y: 0, z: fwdZ * CFG.walkSpeed * 0.45 }, true)
+            camera.position.set(x, centerY + tmp.eye, z)
+            tmp.nextMantle = performance.now() / 1000 + 0.7
+            live.grounded = true
+            return
+          }
+        }
+      }
+    }
+
     const maxSpeed = crouch ? CFG.crouchSpeed : run ? CFG.runSpeed : CFG.walkSpeed
     const tx = tmp.wish.x * maxSpeed
     const tz = tmp.wish.z * maxSpeed
@@ -126,6 +162,12 @@ export default function Player() {
         play(tmp.step++ % 2 ? 'footstep_2' : 'footstep_1', {
           volume: crouch ? 0.28 : run ? 0.58 : 0.42,
           rate: run ? 1.08 : crouch ? 0.88 : 1,
+        })
+        // Sound indicates a rough location; the bot must investigate, not know an exact target.
+        emit('combatNoise', {
+          position: [pos.x, pos.y, pos.z],
+          radius: crouch ? 2.5 : run ? 12 : 7,
+          kind: 'footstep',
         })
         tmp.nextStep = elapsed + (run ? 0.3 : crouch ? 0.56 : 0.43)
       }
