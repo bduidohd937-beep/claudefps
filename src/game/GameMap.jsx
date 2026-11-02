@@ -91,7 +91,8 @@ export default function GameMap() {
   if (!ACTIVE_MAP.url) return <Arena />
   return (
     <MapBoundary>
-      <Suspense fallback={<Arena />}>
+      {/* Do not expose a temporary arena collider as the external map loads: Match may start at wrong bounds. */}
+      <Suspense fallback={null}>
         <GlbMap url={ACTIVE_MAP.url} scale={ACTIVE_MAP.scale} />
       </Suspense>
     </MapBoundary>
