@@ -83,7 +83,7 @@ export default function Match() {
     resolve.randomNear = (base, avoid, previous, radius, minimumDistance) => {
       if (!base) return null
       const valid = []
-      for (let i = 0; i < 64; i++) {
+      for (let i = 0; i < 96; i++) {
         const angle = Math.random() * Math.PI * 2
         const distance = radius * (0.35 + Math.random() * 0.65)
         const x = base[0] + Math.cos(angle) * distance
@@ -102,13 +102,18 @@ export default function Match() {
         const recentDistance = previous ? Math.hypot(x - previous[0], z - previous[2]) : radius
         const opponentDistance = avoid ? Math.hypot(x - avoid[0], z - avoid[2]) : minimumDistance * 2
         const from = [x, centerY + 0.5, z]
-        const dx = avoid ? avoid[0] - x : 0, dz = avoid ? avoid[2] - z : 0
-        const distanceToOpponent = Math.hypot(dx, dz)
-        const blocked = avoid && distanceToOpponent > 0.1 && cast(from,
-          [dx / distanceToOpponent, 0, dz / distanceToOpponent], distanceToOpponent - 0.3)
-        const exposed = !!avoid && opponentDistance < 15 && !blocked
-        const score = Math.min(recentDistance, radius) * 0.7 +
-          Math.min(opponentDistance, 25) * 0.3 + Math.random() * 2 - (exposed ? 14 : 0)
+        const dx = avoid ? avoid[0] - x : 0
+        const dy = avoid ? avoid[1] - centerY : 0
+        const dz = avoid ? avoid[2] - z : 0
+        const distanceToOpponent = Math.hypot(dx, dy, dz)
+        const blocked = avoid && distanceToOpponent > 0.5 && cast(from,
+          [dx / distanceToOpponent, dy / distanceToOpponent, dz / distanceToOpponent],
+          Math.max(0, distanceToOpponent - 0.45))
+        const exposed = !!avoid && distanceToOpponent < 26 && !blocked
+        // Too-close direct sight lines are not random spawn candidates.
+        if (exposed) continue
+        const score = Math.min(recentDistance, radius) * 0.6 +
+          Math.min(opponentDistance, 35) * 0.4 + Math.random() * 2
         valid.push({ pos: [x, centerY, z], score })
       }
       valid.sort((a, b) => b.score - a.score)
@@ -120,6 +125,26 @@ export default function Match() {
   useEffect(() => {
     // 라운드 시작 시 플레이어/봇 위치 초기화 + 서로 마주보게 설정
     refs.snapSpawn = (pos) => findSafeSpawn(pos, null, 1)
+    refs.validateSpawn = (kind, point) => {
+      const opposite = kind === 'player' ? refs.botBody : refs.playerBody
+      const at = opposite?.translation()
+      return findSafeSpawn.at(point, at ? [at.x, at.y, at.z] : null, 3)
+    }
+    refs.randomSafeSpawn = (kind) => {
+      const bounds = refs.mapBounds
+      const span = bounds ? Math.min(bounds.max[0] - bounds.min[0], bounds.max[2] - bounds.min[2]) : 20
+      const radius = Math.min(22, Math.max(3, span * 0.27))
+      const own = kind === 'player' ? refs.playerBody : refs.botBody
+      const opposite = kind === 'player' ? refs.botBody : refs.playerBody
+      const ownNow = own?.translation()
+      const other = opposite?.translation()
+      const base = kind === 'player' ? (refs.safePlayerSpawn || SPAWNS.player) : (refs.safeBotSpawn || SPAWNS.bot)
+      const anchor = findSafeSpawn.at(base) || findSafeSpawn(base)
+      if (!anchor) return null
+      const avoid = other ? [other.x, other.y, other.z] : null
+      const previous = ownNow ? [ownNow.x, ownNow.y, ownNow.z] : null
+      return findSafeSpawn.randomNear(anchor, avoid, previous, radius, Math.min(8, Math.max(3, span * 0.25)))
+    }
     refs.resetRound = () => {
       const bounds = refs.mapBounds
       const span = bounds
