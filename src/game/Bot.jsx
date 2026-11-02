@@ -430,7 +430,7 @@ export default function Bot() {
     const active = !st.dead && live.phase === 'live' && live.locked && !live.dead
     const pp = refs.playerBody?.translation()
     const v = b.linvel()
-    let dirx = 0, dirz = 0, spd = 0
+    let dirx = 0, dirz = 0, spd = 0, hop = false
 
     if (active && pp) {
       const ex = p.x, ey = p.y + 0.7, ez = p.z
@@ -506,9 +506,36 @@ export default function Bot() {
         }
       }
 
-      // ── 장애물 회피 / 끼임 탈출 ──
+      // ── 낮은 장애물 점프 / 벽 회피 / 끼임 탈출 ──
       if (spd > 0) {
-        if (t < st.unstuckUntil) { dirx = st.ux; dirz = st.uz }
+        if (t > st.nextHop && Math.abs(v.y) < 0.15) {
+          const low = probe(p.x, p.y - 0.32, p.z, dirx, dirz, 1.0)
+          const upper = probe(p.x, p.y + 0.72, p.z, dirx, dirz, 1.15)
+          if (low < 0.85 && upper > 1.0) {
+            const ray = tmp.groundRay
+            ray.origin.x = p.x + dirx * 1.15
+            ray.origin.y = p.y + 1.45
+            ray.origin.z = p.z + dirz * 1.15
+            ray.dir.x = 0; ray.dir.y = -1; ray.dir.z = 0
+            const floor = world.castRayAndGetNormal(ray, 2.4, true, undefined, undefined, undefined, undefined, tmp.notBot)
+            if (floor && floor.normal.y > 0.72) {
+              const centerY = ray.origin.y - floor.timeOfImpact + CFG.capsuleHalfHeight + CFG.capsuleRadius
+              if (centerY - p.y > 0.18 && centerY - p.y < 0.9) {
+                const ground = world.castRay(
+                  new rapier.Ray({ x: p.x, y: p.y, z: p.z }, { x: 0, y: -1, z: 0 }),
+                  0.97, true, undefined, undefined, undefined, undefined, tmp.notBot,
+                )
+                if (ground) {
+                  hop = true
+                  st.nextHop = t + 1.35
+                }
+              }
+            }
+          }
+        }
+        if (hop) {
+          // Keep the current desired direction and use the normal jump impulse.
+        } else if (t < st.unstuckUntil) { dirx = st.ux; dirz = st.uz }
         else {
           const fwd = probe(p.x, p.y - 0.2, p.z, dirx, dirz, 1.6)
           if (fwd < 1.2) {
@@ -564,7 +591,7 @@ export default function Bot() {
     const f = 1 - Math.exp(-12 * dt)
     const vx = v.x + (dirx * spd - v.x) * f
     const vz = v.z + (dirz * spd - v.z) * f
-    if (!st.dead) b.setLinvel({ x: vx, y: v.y, z: vz }, true)
+    if (!st.dead) b.setLinvel({ x: vx, y: hop ? CFG.jumpVelocity : v.y, z: vz }, true)
     st.speed = Math.hypot(vx, vz)
 
     // 사망 시 뒤로 쓰러짐 / 평상시 yaw 적용
