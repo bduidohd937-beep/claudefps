@@ -397,8 +397,12 @@ function Menu({ pause }) {
         ) : (
           <button className="start" onClick={start}>{TRAINING ? '연습 시작' : '매치 시작'}</button>
         )}
+        <button className="ghost" onClick={() => useGame.getState().setSpawnEditorOpen(true)}>
+          스폰 좌표 직접 설정 (F6)
+        </button>
         <p className="hint">
-          포함된 PVP 맵은 주소 뒤에 ?map=pvp를 붙여 선택합니다. 스폰은 자동 보정되며 F4(내 스폰) / F3(봇 스폰)로 저장할 수 있습니다.
+          맵은 주소 뒤에 ?map=pvp 또는 ?map=offense를 붙여 선택합니다.
+          F6으로 플레이어·AI의 스폰 좌표를 직접 설정할 수 있습니다.
         </p>
       </div>
     </div>
