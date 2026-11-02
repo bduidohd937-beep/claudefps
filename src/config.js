@@ -1,5 +1,9 @@
 // 모든 튜닝 값은 여기서 조절합니다. (단위: m, s, 도(deg))
 const params = new URLSearchParams(window.location.search)
+export const AUTO_ENTER = params.get('enter') === '1'
+const levelParam = Number(params.get('level'))
+export const START_LEVEL = Number.isInteger(levelParam) && levelParam >= 1 && levelParam <= 5
+  ? levelParam : 3
 
 export const TRAINING = params.get('training') === '1' // ?training=1 → 상점/라운드 없이 더미 사격 연습
 export const BOT_MODEL_URL = '/models/enemy.glb'
