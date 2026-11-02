@@ -5,7 +5,7 @@ import { CFG, MATCH, SPAWNS, TRAINING, AUTO_ENTER, START_LEVEL, DYNAMIC_SPAWNS, 
 import { live, refs, useGame } from '../store'
 import { enemies } from '../enemies'
 import { cam, on } from '../fx'
-import { exposedAtCloseRange, spawnScore } from './SpawnSafety.js'
+import { exposedAtCloseRange, exposedWithoutCover, spawnScore } from './SpawnSafety.js'
 
 // 라운드 진행 로직: 라운드 리셋, 구매 타이머, 승패 판정, 킬 보상, 스폰 저장 단축키
 export default function Match() {
@@ -111,7 +111,16 @@ export default function Match() {
           [dx / distanceToOpponent, dy / distanceToOpponent, dz / distanceToOpponent],
           Math.max(0, distanceToOpponent - 0.45))
         if (avoid && exposedAtCloseRange(distanceToOpponent, !!blocked)) continue
-        const score = spawnScore(recentDistance, opponentDistance, radius, Math.random() * 2)
+        const span = refs.mapBounds ? Math.min(
+          refs.mapBounds.max[0] - refs.mapBounds.min[0],
+          refs.mapBounds.max[2] - refs.mapBounds.min[2],
+        ) : 20
+        const coverDirections = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+        const cover = !!avoid && coverDirections.some(([cx, cz]) =>
+          !!cast([x, centerY + 0.4, z], [cx, 0, cz], 5.5))
+        if (avoid && exposedWithoutCover(opponentDistance, span, cover)) continue
+        const score = spawnScore(recentDistance, opponentDistance, radius,
+          Math.random() * 2, cover ? 5 : 0)
         valid.push({ pos: [x, centerY, z], score })
       }
       valid.sort((a, b) => b.score - a.score)
