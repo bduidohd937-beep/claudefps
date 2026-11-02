@@ -7,7 +7,7 @@ import { on } from '../fx'
 import { initAudio } from '../audio'
 import SpawnEditor from './SpawnEditor'
 import WeaponTuner from './WeaponTuner'
-import MapSelector from './MapSelector'
+import { toLobby } from './MainMenu'
 
 const STATE_LABEL = { stand: '정지', walk: '걷기', run: '달리기', crouch: '앉기', air: '공중' }
 
@@ -338,79 +338,21 @@ function SensSlider() {
   )
 }
 
-const LEVEL_HINT = {
-  1: '반응 1초 · 명중률 낮음 · 약한 데미지',
-  2: '반응 1초 · 명중률 낮음 · 약한 데미지',
-  3: '발견 0.4초 후 사격 · 엄폐 사용',
-  4: '즉각 반응 · 멈춰서 정확히 사격 · 헤드 조준',
-  5: '즉각 반응 · 멈춰서 정확히 사격 · 헤드 조준(고확률)',
-}
-
-// 시작 메뉴 / 일시정지
-function Menu({ pause }) {
-  const difficulty = useGame((s) => s.difficulty)
-  const setDifficulty = useGame((s) => s.setDifficulty)
-  const startMatch = useGame((s) => s.startMatch)
+// Only shown after entering a game. The independent main lobby lives in MainMenu.jsx.
+function PauseMenu() {
   const lock = useGame((s) => s.lock)
-
-  const start = () => {
-    initAudio() // 브라우저 정책상 사용자 클릭 시점에 오디오를 시작해야 합니다
-    if (TRAINING) { startMatch(difficulty); lock(); return }
-    startMatch(difficulty)
-  }
-  const resume = () => { initAudio(); lock() }
-
+  const setTuner = useGame((s) => s.setTunerOpen)
+  const setSpawn = useGame((s) => s.setSpawnEditorOpen)
   return (
     <div className="overlay">
-      <div className="panel">
-        <h1>claudefps</h1>
-        <p className="sub">{pause ? '일시정지' : `1 vs 1 · ${MATCH.winScore}라운드 선승제`}</p>
-        <MapSelector />
-
-        {!pause && !TRAINING && (
-          <div className="diff">
-            <div className="diff-label">AI 난이도</div>
-            <div className="diff-btns" role="radiogroup" aria-label="AI 난이도">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <button key={n} role="radio" aria-checked={difficulty === n}
-                  className={difficulty === n ? 'on' : ''} onClick={() => setDifficulty(n)}>{n}</button>
-              ))}
-            </div>
-            <div className="diff-hint">{LEVEL_HINT[difficulty]}</div>
-          </div>
-        )}
-
-        <div className="keys">
-          <kbd>W A S D</kbd><span>이동 (기본 걷기)</span>
-          <kbd>Shift</kbd><span>달리기</span>
-          <kbd>C</kbd><span>앉기</span>
-          <kbd>Space</kbd><span>점프</span>
-          <kbd>좌클릭</kbd><span>사격 / 나이프</span>
-          <kbd>R</kbd><span>재장전</span>
-          <kbd>1 2 3</kbd><span>주무기 / 권총 / 나이프</span>
-          <kbd>B</kbd><span>상점</span>
-          <kbd>Esc</kbd><span>일시정지</span>
-          <kbd>F6</kbd><span>스폰 좌표 편집</span>
-          <kbd>F2</kbd><span>무기 위치 직접 조정</span>
-        </div>
-
-        <SensSlider />
-
-        {pause ? (
-          <button className="start" onClick={resume}>계속하기</button>
-        ) : (
-          <button className="start" onClick={start}>{TRAINING ? '연습 시작' : '매치 시작'}</button>
-        )}
-        <button className="ghost" onClick={() => useGame.getState().setTunerOpen(true)}>
-          무기 모델 위치·기울기 조정 (F2)
-        </button>
-        <button className="ghost" onClick={() => useGame.getState().setSpawnEditorOpen(true)}>
-          스폰 좌표 직접 설정 (F6)
-        </button>
-        <p className="hint">
-          메뉴의 맵 선택에서 사용 가능한 맵을 고를 수 있습니다.
-          F6으로 플레이어·AI의 스폰 좌표를 직접 설정할 수 있습니다.
-        </p>
+      <div className="panel" style={{ width: 'min(420px, 92vw)' }}>
+        <h1>일시정지</h1>
+        <p className="sub">게임을 계속하거나 로비로 돌아갈 수 있어.</p>
+        <button className="start" onClick={() => { initAudio(); lock() }}>게임 계속하기</button>
+        <button className="ghost" onClick={() => setTuner(true)}>무기 위치 조정 (F2)</button>
+        <button className="ghost" onClick={() => setSpawn(true)}>스폰 위치 조정 (F6)</button>
+        <button className="ghost" onClick={toLobby}>메인 메뉴로 돌아가기</button>
+        <p className="hint">메인 메뉴에서는 맵과 AI 난이도를 변경할 수 있어.</p>
       </div>
     </div>
   )
@@ -431,7 +373,7 @@ function MatchEnd() {
         <div className="final-score">{score.player} : {score.ai}</div>
         <p className="sub">AI 난이도 {difficulty}</p>
         <button className="start" onClick={() => { initAudio(); startMatch(difficulty) }}>재경기</button>
-        <button className="ghost" onClick={() => useGame.setState({ phase: 'menu' })}>난이도 변경</button>
+        <button className="ghost" onClick={toLobby}>메인 메뉴로</button>
       </div>
     </div>
   )
@@ -474,8 +416,8 @@ export default function HUD() {
       {playing && <Ammo />}
       <Scoreboard />
       <RoundBanner />
-      {phase === 'menu' && !tunerOpen && !spawnEditorOpen && <Menu />}
-      {showPause && <Menu pause />}
+      {phase === 'menu' && <div className="overlay"><div className="panel"><h1>전장 준비 중</h1><p className="sub">맵과 캐릭터를 불러오고 있어.</p><button className="ghost" onClick={toLobby}>메인 메뉴로 돌아가기</button></div></div>}
+      {showPause && <PauseMenu />}
       {shopOpen && !spawnEditorOpen && !tunerOpen && (phase === 'buy' || phase === 'live') && <Shop />}
       <MatchEnd />
       <SpawnEditor />
