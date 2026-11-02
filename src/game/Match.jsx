@@ -191,10 +191,16 @@ export default function Match() {
     }
     window.addEventListener('keydown', kd)
 
-    // 킬 보상 (+$300)
+    // Kill reward is identical for either side; timeout awards no kill bonus.
     const off = on('kill', (k) => {
-      if (k.byPlayer && !TRAINING) {
+      if (TRAINING || useGame.getState().phase !== 'live') return
+      if (k.byPlayer) {
         useGame.setState((s) => ({ money: Math.min(MATCH.maxMoney, s.money + MATCH.killReward) }))
+      } else {
+        useGame.setState((s) => ({ botEconomy: {
+          ...s.botEconomy,
+          money: Math.min(MATCH.maxMoney, s.botEconomy.money + MATCH.killReward),
+        } }))
       }
     })
     return () => {

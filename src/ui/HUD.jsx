@@ -236,7 +236,7 @@ function RoundBanner() {
   return (
     <div className={`banner ${win ? 'win' : 'lose'}`}>
       <h2>{win ? '라운드 승리' : '라운드 패배'}</h2>
-      <p>+${b.reward.toLocaleString()}</p>
+      <p>+${b.reward.toLocaleString()}{b.bonus > 0 ? ` (연패 보너스 ${b.bonus})` : ''}</p>
     </div>
   )
 }
@@ -244,6 +244,8 @@ function RoundBanner() {
 // B키 상점
 function Shop() {
   const money = useGame((s) => s.money)
+  const botEconomy = useGame((s) => s.botEconomy)
+  const round = useGame((s) => s.round)
   const armor = useGame((s) => s.armor)
   const owned = useGame((s) => s.owned)
   const weapon = useGame((s) => s.weapon)
@@ -273,7 +275,8 @@ function Shop() {
   const stateOf = (it) => {
     if (it.id === 'rifle' && owned.rifle) return '보유 중'
     if (it.id === 'pistol') return weapon === 'pistol' ? '장착 중' : '장착'
-    if ((it.id === 'armor_half' || it.id === 'armor_full') && armor >= CFG.armorMax) return '가득 참'
+    if (it.id === 'armor_half' && armor >= 50) return '보유 중'
+    if (it.id === 'armor_full' && armor >= 100) return '보유 중'
     return `$${it.price}`
   }
 
@@ -287,6 +290,11 @@ function Shop() {
         </div>
         <p className="sub">
           {canBuy ? <>구매 시간 <b ref={timer} />초 남음</> : '지금은 구매할 수 없습니다 (구매 시간 종료)'}
+        </p>
+        <p className="sub" style={{ marginBottom: 12, lineHeight: 1.5 }}>
+          {round === 1 ? '1라운드 · 양쪽 Glock으로 시작' : '동일한 경제 규칙 적용'}<br />
+          AI 장비: {WEAPONS[botEconomy.weapon].name} · 아머 {Math.ceil(botEconomy.armor)}
+          {' · '}소지금 ${botEconomy.money.toLocaleString()}
         </p>
         {groups.map((g) => (
           <div key={g} className="shop-group">

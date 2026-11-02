@@ -1,8 +1,10 @@
 import { create } from 'zustand'
-import { CFG, MATCH, TRAINING } from './config'
-import { WEAPONS } from './weapons'
-import { emit, cam } from './fx'
-import { play } from './audio'
+import { CFG, MATCH, TRAINING } from './config.js'
+import { WEAPONS } from './weapons.js'
+import { emit, cam } from './fx.js'
+import { enemies } from './enemies.js'
+import { play } from './audio.js'
+import { initialAmmo, initialOwned, initialBotEconomy, refillAllAmmo, loseEquipment, roundPayout, cappedMoney, absorbArmor, autoBuyBot } from './economy.js'
 
 const readSens = () => {
   try {
@@ -13,9 +15,6 @@ const readSens = () => {
   }
 }
 
-const initialAmmo = () =>
-  Object.fromEntries(Object.values(WEAPONS).map((w) => [w.id, { mag: w.mag, reserve: w.reserve }]))
-const initialOwned = () => ({ rifle: false, pistol: true, knife: true })
 const now = () => performance.now() / 1000
 
 // React 리렌더가 필요한 UI 상태만 여기에 둡니다.
@@ -46,6 +45,32 @@ export const useGame = create((set, get) => ({
   hp: 100,
   armor: 0,
   money: MATCH.startMoney,
+  lossStreak: 0,
+  botEconomy: initialBotEconomy(),
+  setBotArmor: (armor) => set((s) => ({ botEconomy: { ...s.botEconomy, armor } })),
+  botShot: () => {
+    const bot = get().botEconomy
+    const slot = bot.ammo[bot.weapon]
+    if (!slot || slot.mag <= 0) return false
+    set((s) => ({ botEconomy: {
+      ...s.botEconomy,
+      ammo: { ...s.botEconomy.ammo,
+        [bot.weapon]: { ...s.botEconomy.ammo[bot.weapon], mag: s.botEconomy.ammo[bot.weapon].mag - 1 } },
+    } }))
+    return true
+  },
+  botReload: () => {
+    const bot = get().botEconomy
+    const w = WEAPONS[bot.weapon]
+    const a = bot.ammo[bot.weapon]
+    if (!w || w.melee || a.reserve <= 0 || a.mag >= w.mag) return false
+    const take = Math.min(w.mag - a.mag, a.reserve)
+    set((s) => ({ botEconomy: {
+      ...s.botEconomy, ammo: { ...s.botEconomy.ammo,
+        [bot.weapon]: { mag: a.mag + take, reserve: a.reserve - take } },
+    } }))
+    return true
+  },
   weapon: 'pistol',
   owned: initialOwned(),
   ammo: initialAmmo(),
@@ -61,9 +86,9 @@ export const useGame = create((set, get) => ({
   damagePlayer: (amount, meta) => {
     const { hp, armor } = get()
     if (hp <= 0) return
-    const absorbed = Math.min(armor, amount * CFG.armorRatio)
-    const nhp = Math.max(0, hp - (amount - absorbed))
-    set({ hp: nhp, armor: armor - absorbed })
+    const result = absorbArmor(hp, armor, amount)
+    const nhp = result.hp
+    set({ hp: nhp, armor: result.armor })
     cam.shake = Math.min(1.4, cam.shake + 0.45 + amount / 40)
     cam.flinchP += 0.025 + amount * 0.0012 // 카메라 킥백
     cam.flinchY += (Math.random() - 0.5) * 0.05
@@ -96,7 +121,7 @@ export const useGame = create((set, get) => ({
     live.reloading = false
     set({
       difficulty: d, round: 1, score: { player: 0, ai: 0 },
-      money: MATCH.startMoney, hp: 100, armor: 0,
+      money: MATCH.startMoney, lossStreak: 0, botEconomy: initialBotEconomy(), hp: 100, armor: 0,
       owned: initialOwned(), ammo: initialAmmo(), weapon: 'pistol',
       matchOver: null, roundBanner: null,
     })
@@ -105,6 +130,10 @@ export const useGame = create((set, get) => ({
 
   // 라운드 시작: 위치 초기화 → 구매 단계(상점 자동 오픈, 포인터락 해제)
   beginRound: () => {
+    set((s) => ({
+      ammo: refillAllAmmo(s.ammo),
+      botEconomy: autoBuyBot({ ...s.botEconomy, ammo: refillAllAmmo(s.botEconomy.ammo) }, s.round),
+    }))
     refs.resetRound?.()
     live.reloading = false
     if (TRAINING) { set({ phase: 'live', shopOpen: false, hp: 100 }); return }
@@ -137,12 +166,19 @@ export const useGame = create((set, get) => ({
     if (get().phase !== 'live') return
     const score = { ...get().score }
     winner === 'player' ? score.player++ : score.ai++
-    const reward = winner === 'player' ? MATCH.winReward : MATCH.lossReward
+    const pPayout = roundPayout(winner === 'player', get().lossStreak)
+    const aiPayout = roundPayout(winner === 'ai', get().botEconomy.lossStreak)
     live.firing = false
     set((s) => ({
       phase: 'roundEnd', score,
-      money: Math.min(MATCH.maxMoney, s.money + reward),
-      roundBanner: { winner, reward },
+      money: cappedMoney(s.money + pPayout.reward),
+      lossStreak: pPayout.lossStreak,
+      botEconomy: {
+        ...s.botEconomy,
+        money: cappedMoney(s.botEconomy.money + aiPayout.reward),
+        lossStreak: aiPayout.lossStreak,
+      },
+      roundBanner: { winner, reward: pPayout.reward, bonus: pPayout.lossBonus },
     }))
     play(winner === 'player' ? 'round_win' : 'round_lose')
 
@@ -153,15 +189,20 @@ export const useGame = create((set, get) => ({
         refs.unlock?.()
         return
       }
-      // 생존자는 장비 유지 / 사망자는 주무기·아머 상실, 돈은 유지
-      if (get().hp <= 0) {
+      // Survivors retain paid gear; only the fighter actually killed loses it.
+      const playerDied = get().hp <= 0
+      const botDied = !!(enemies.get('bot')?.dead)
+      if (playerDied) {
         set((s) => ({
-          owned: { ...s.owned, rifle: false },
-          armor: 0,
-          ammo: { ...s.ammo, rifle: { mag: WEAPONS.rifle.mag, reserve: WEAPONS.rifle.reserve },
-                  pistol: { mag: WEAPONS.pistol.mag, reserve: WEAPONS.pistol.reserve } },
+          ...loseEquipment(s),
+          money: s.money,
+          lossStreak: s.lossStreak,
+          botEconomy: s.botEconomy,
         }))
         get().equip('pistol')
+      }
+      if (botDied) {
+        set((s) => ({ botEconomy: loseEquipment(s.botEconomy) }))
       }
       set((s) => ({ round: s.round + 1 }))
       get().beginRound()
@@ -172,15 +213,16 @@ export const useGame = create((set, get) => ({
   buy: (id) => {
     const st = get()
     if (st.phase !== 'buy') return { ok: false, msg: '구매 시간이 지났습니다' }
-    const price = { armor_half: 650, armor_full: 1000, rifle: WEAPONS.rifle.price, pistol: 0, ammo: 100 }[id]
+    const price = { armor_half: 650, armor_full: 1000, rifle: WEAPONS.rifle.price, pistol: 0 }[id]
+    if (price === undefined) return { ok: false, msg: '지원하지 않는 품목입니다' }
     if (st.money < price) return { ok: false, msg: '소지금이 부족합니다' }
     const pay = () => set((s) => ({ money: s.money - price }))
 
     if (id === 'armor_half' || id === 'armor_full') {
-      if (st.armor >= CFG.armorMax) return { ok: false, msg: '아머가 가득 찼습니다' }
-      const add = id === 'armor_half' ? 25 : 50
+      const target = id === 'armor_half' ? 50 : 100
+      if (st.armor >= target) return { ok: false, msg: '해당 방어구 이상을 이미 보유 중입니다' }
       pay()
-      set((s) => ({ armor: Math.min(CFG.armorMax, s.armor + add) }))
+      set((s) => ({ armor: Math.min(CFG.armorMax, target) }))
     } else if (id === 'rifle') {
       if (st.owned.rifle) return { ok: false, msg: '이미 보유 중입니다' }
       pay()
@@ -192,13 +234,6 @@ export const useGame = create((set, get) => ({
     } else if (id === 'pistol') {
       get().equip('pistol')
       return { ok: true, msg: 'Glock 장착' }
-    } else if (id === 'ammo') {
-      const w = WEAPONS[st.weapon]
-      if (w.melee) return { ok: false, msg: '나이프는 탄약이 필요 없습니다' }
-      const a = st.ammo[w.id]
-      if (a.reserve >= w.reserve) return { ok: false, msg: '예비 탄약이 가득 찼습니다' }
-      pay()
-      get().setAmmo(w.id, a.mag, w.reserve)
     }
     play('buy')
     return { ok: true, msg: '구매 완료' }
