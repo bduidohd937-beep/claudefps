@@ -90,11 +90,13 @@ export const ACTIVE_MAP = {
 
 // 매치 규칙 / 경제
 export const MATCH = {
-  startMoney: 800,
-  maxMoney: 16000,
-  killReward: 300,
-  winReward: 3250,
-  lossReward: 1400,
+  startMoney: 1000,
+  maxMoney: 10000,
+  killReward: 200,
+  winReward: 2300,
+  lossReward: 1900,
+  lossBonusStep: 200,
+  maxLossBonus: 600,
   winScore: 5, // 5라운드 선승제
   roundTime: 90, // 시간 초과 시 AI 승리
   buyTime: 15,
