@@ -1,0 +1,120 @@
+.lobby {
+  min-height: 100dvh;
+  height: 100dvh;
+  width: 100%;
+  position: relative;
+  isolation: isolate;
+  overflow-y: auto;
+  background:
+    radial-gradient(ellipse at 13% 32%, rgba(239, 122, 49, .13), transparent 38%),
+    radial-gradient(ellipse at 82% 85%, rgba(74, 103, 127, .12), transparent 42%),
+    #0a0e14;
+  color: #edf1f4;
+  user-select: none;
+}
+.lobby:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 49.8%, rgba(255,255,255,.035) 50%, transparent 50.2%);
+  background-size: 145px 145px;
+  opacity: .25;
+  pointer-events: none;
+  z-index: -1;
+}
+.lobby-glow {
+  position: absolute;
+  left: -170px;
+  top: 23%;
+  width: 680px;
+  height: 680px;
+  border: 1px solid rgba(239, 122, 49, .13);
+  border-radius: 50%;
+  box-shadow: 0 0 0 95px rgba(239,122,49,.013), 0 0 0 195px rgba(239,122,49,.008);
+  pointer-events: none;
+}
+.lobby-top, .lobby-footer { width: min(1320px, calc(100% - 72px)); margin: auto; display: flex; justify-content: space-between; align-items: center; }
+.lobby-top { height: 88px; border-bottom: 1px solid #25303c; }
+.lobby-brand { font-size: 18px; font-weight: 800; letter-spacing: .07em; display:flex; align-items: center; gap: 2px; }
+.lobby-brand > span:last-child { color: #f78b42; }
+.lobby-brand-mark { display: inline-block; color: white; background: #e97833; padding: 9px 12px; border-radius: 4px; margin-right: 12px; font-size: 16px; letter-spacing: -.06em; }
+.lobby-brand-mark span { color: #121b24; }
+.lobby-build { font-size: 11px; letter-spacing: .19em; color: #8b9aa8; font-family: ui-monospace, monospace; }
+.lobby-build b { color: #f8a365; margin-left: 14px; }
+.lobby-body { width: min(1320px, calc(100% - 72px)); margin: auto; display: grid; grid-template-columns: minmax(300px, 1fr) minmax(450px, 580px); align-items: center; gap: clamp(32px, 6vw, 110px); min-height: calc(100dvh - 145px); padding: 52px 0; }
+.lobby-intro { max-width: 540px; align-self: center; position: relative; }
+.lobby-eyebrow, .lobby-step { color: #ffa15f; letter-spacing: .19em; font: 700 11px ui-monospace, monospace; }
+.lobby-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #f78b42; margin-right: 9px; box-shadow: 0 0 15px #f78b42; }
+.lobby-intro h1 { margin: 28px 0 25px; font: 900 clamp(88px, 10.4vw, 159px)/.85 Impact, 'Arial Narrow', sans-serif; letter-spacing: -.035em; }
+.lobby-intro h1 em { color: #f28b46; font-style: normal; }
+.lobby-intro > p { max-width: 400px; color: #a7b4c1; font-size: 16px; line-height: 1.9; }
+.lobby-facts { display: flex; flex-wrap: wrap; gap: 20px; padding-top: 30px; margin-top: 32px; border-top: 1px solid #2d3641; }
+.lobby-facts span { display: grid; gap: 6px; font-size: 12px; color: #8999a8; }
+.lobby-facts strong { color: #e7edf3; font: 800 25px ui-monospace, monospace; letter-spacing: .02em; }
+.lobby-side-note { color: #71818f; font-size: 12px; margin-top: 40px; line-height: 2; }
+.lobby-panel { background: rgba(18, 24, 32, .92); border: 1px solid #35404d; border-radius: 12px; box-shadow: 0 25px 95px #0008; padding: clamp(20px, 3vw, 32px); }
+.lobby-panel-head { display:flex; justify-content: space-between; gap: 10px; align-items: end; margin-bottom: 20px; }
+.lobby-panel h2 { font-size: 22px; margin: 8px 0 0; letter-spacing: -.03em; }
+.lobby-count { font: 700 10px ui-monospace, monospace; color: #a3b0bd; border: 1px solid #46505b; padding: 8px 10px; border-radius: 5px; }
+.lobby-map-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.lobby-map { display: flex; flex-direction: column; text-align: left; min-width: 0; color: #e4eaf0; border: 1px solid #333e4b; background: #1a222c; border-radius: 7px; padding: 9px; cursor: pointer; position: relative; transition: border-color .16s, background .16s; }
+.lobby-map:hover { border-color: #86929f; background: #222d38; }
+.lobby-map.selected { border-color: #ff9d54; box-shadow: inset 0 0 0 1px #da733d; }
+.lobby-map:focus-visible, .lobby-enter:focus-visible, .lobby-difficulties button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.lobby-map-art { height: 60px; border-radius: 4px; background: #374555; display:block; position:relative; overflow:hidden; margin-bottom:9px; }
+.lobby-map-art:before { content:""; position:absolute; inset:-40% -10%; background: repeating-linear-gradient(125deg, transparent 0 29px, rgba(3,8,14,.28) 30px 51px); transform:rotate(-9deg); }
+.art-arena { background: linear-gradient(135deg, #626b78, #252e3b); }
+.art-pvp { background: linear-gradient(135deg, #ac693d, #3d3b36); }
+.art-warface { background: linear-gradient(135deg, #4f7a77, #263e4c); }
+.art-brutalist { background: linear-gradient(135deg, #85817a, #41434b); }
+.art-fps { background: linear-gradient(135deg, #637f91, #233747); }
+.art-ghost { background: linear-gradient(135deg, #627276, #242c38); }
+.lobby-map-number { position: absolute; bottom: 4px; right: 10px; color: #e8edf0b3; font: 800 27px ui-monospace, monospace; }
+.lobby-map-copy { display: grid; gap: 3px; padding-right: 14px; }
+.lobby-map-copy strong { font-size: 12px; font-weight: 700; }
+.lobby-map-copy small { color: #9eacb9; line-height: 1.4; font-size: 10px; }
+.lobby-map-radio { position:absolute; right: 12px; bottom: 15px; height: 8px; width: 8px; border-radius: 50%; border: 1px solid #8799a6; }
+.lobby-map.selected .lobby-map-radio { background: #f79350; border-color: #f79350; box-shadow: 0 0 9px #f7935099; }
+.lobby-rule { display:grid; grid-template-columns: 1fr; gap: 16px; margin-top: 24px; padding-top: 19px; border-top: 1px solid #394350; }
+.lobby-rule h2 { font-size: 18px; }
+.lobby-difficulties { display:grid; grid-template-columns: repeat(5, 1fr); gap: 7px; }
+.lobby-difficulties button { border-radius: 5px; border: 1px solid #3e4b58; background: #212a35; color: #cad3dc; padding: 9px 0; cursor: pointer; display:grid; gap:3px; justify-items:center; }
+.lobby-difficulties button.active { border-color: #f29454; background: #bb6330; color: white; }
+.lobby-difficulties strong { font-size: 17px; }
+.lobby-difficulties small { font-size: 10px; }
+.lobby-options { border-top: 1px solid #394350; padding-top: 14px; margin-top: 21px; }
+.lobby-options-trigger { display:flex; justify-content:space-between; width:100%; background:transparent; border:0; color:#cbd3dc; font:600 13px inherit; padding: 0; cursor:pointer; }
+.lobby-options-trigger span:last-child { color:#f6a365; }
+.lobby-sensitivity { padding-top:14px; }
+.lobby-sensitivity label { display:flex; justify-content:space-between; font-size:12px; }
+.lobby-sensitivity b { color:#f6a365; }
+.lobby-sensitivity input { accent-color:#f6a365; width:100%; margin:12px 0 4px; }
+.lobby-sensitivity p { color:#93a0ad; font-size:11px; line-height:1.6; }
+.lobby-action { padding-top: 18px; display:grid; gap: 14px; }
+.lobby-selection { color:#a3b1be; font-size:12px; line-height:1.8; }
+.lobby-selection b { color:#fff; font-weight:700; }
+.lobby-enter { cursor:pointer; width:100%; padding:18px 20px; border:0; border-radius:6px; background:#f08b46; color:#171b20; font-size:16px; font-weight:800; display:flex; align-items:center; justify-content:space-between; transition:background .2s,transform .2s; }
+.lobby-enter:hover:not(:disabled) { background:#ffad73; transform:translateY(-1px); }
+.lobby-enter:disabled { opacity:.6; cursor:wait; }
+.lobby-enter span { font-size:24px; }
+.lobby-error { padding:12px; border-radius:5px; color:#ffb4a0; border:1px solid #8d443f; background:#49272559; font-size:12px; line-height:1.7; }
+.lobby-footer { min-height:57px; border-top:1px solid #25303c; color:#778592; font: 11px ui-monospace, monospace; gap:16px; }
+@media (max-width: 1050px) {
+  .lobby-body { grid-template-columns: 1fr; min-height:auto; gap:36px; }
+  .lobby-intro h1 { font-size:clamp(76px, 14vw, 126px); }
+  .lobby-intro { max-width: none; }
+  .lobby-facts { display:none; }
+  .lobby-side-note { display:none; }
+  .lobby-panel { max-width:700px; width:100%; }
+}
+@media (max-width: 600px) {
+  .lobby-top, .lobby-footer, .lobby-body { width:calc(100% - 28px); }
+  .lobby-top { height:68px; }
+  .lobby-build { font-size:9px; letter-spacing:0; }
+  .lobby-build b { display:none; }
+  .lobby-intro h1 { margin:18px 0; font-size:75px; }
+  .lobby-body { padding:35px 0; }
+  .lobby-map-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .lobby-panel { padding:16px; }
+  .lobby-footer { align-items:start; flex-direction:column; justify-content:center; gap:4px; }
+}

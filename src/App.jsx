@@ -2,7 +2,7 @@ import { Suspense, useEffect, useRef } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { PointerLockControls } from '@react-three/drei'
 import { Physics } from '@react-three/rapier'
-import { CFG, TRAINING } from './config'
+import { AUTO_ENTER, CFG, TRAINING } from './config'
 import { live, refs, useGame } from './store'
 import GameMap from './game/GameMap'
 import Player from './game/Player'
@@ -13,6 +13,7 @@ import Match from './game/Match'
 import Impacts from './game/Impacts'
 import Particles from './game/Particles'
 import HUD from './ui/HUD'
+import MainMenu from './ui/MainMenu'
 
 function Controls() {
   const ref = useRef()
@@ -43,6 +44,8 @@ function Controls() {
 }
 
 export default function App() {
+  // A real menu: no game world, bots, HUD or physics are mounted until Enter.
+  if (!AUTO_ENTER) return <MainMenu />
   return (
     <>
       <Canvas
