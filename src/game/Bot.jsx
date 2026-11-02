@@ -548,6 +548,14 @@ export default function Bot() {
           </Suspense>
         </Boundary>
         <BotGun gunRef={gun} flashRef={flash} weapon={botWeapon} />
+        {/* High-visibility shoulder identifiers, occluded by walls normally. */}
+        {[-1, 1].map((side) => (
+          <mesh key={side} position={[side * 0.35, 1.37, 0]} rotation={[0, 0, side * 0.14]}>
+            <boxGeometry args={[0.05, 0.17, 0.23]} />
+            <meshStandardMaterial color="#ff883d" emissive="#b73e12" emissiveIntensity={0.5}
+              roughness={0.8} />
+          </mesh>
+        ))}
 
         {/* 보이지 않는 히트박스: 머리 3x / 몸통 1x / 다리 0.75x */}
         <mesh ref={legs} position={[0, 0.45, 0]} visible={false} userData={{ enemyId: 'bot', part: 'legs' }}>
