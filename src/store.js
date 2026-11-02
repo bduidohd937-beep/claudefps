@@ -234,6 +234,8 @@ export const live = {
 export const refs = {
   playerBody: null,
   botBody: null,
+  safePlayerSpawn: null,
+  safeBotSpawn: null,
   resetRound: null, // Match가 등록
   resetBot: null, // Bot이 등록
   unlock: null, // Controls가 등록

@@ -396,7 +396,7 @@ function Menu({ pause }) {
           <button className="start" onClick={start}>{TRAINING ? '연습 시작' : '매치 시작'}</button>
         )}
         <p className="hint">
-          맵 GLB는 주소 뒤에 ?map=warface 처럼 붙여 선택합니다. 스폰 위치는 게임 중 F4(내 스폰) / F3(봇 스폰)로 저장하세요.
+          포함된 PVP 맵은 주소 뒤에 ?map=pvp를 붙여 선택합니다. 스폰은 자동 보정되며 F4(내 스폰) / F3(봇 스폰)로 저장할 수 있습니다.
         </p>
       </div>
     </div>

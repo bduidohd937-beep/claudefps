@@ -1,10 +1,14 @@
 // 사운드 매니저: /sounds/*.mp3 가 있으면 그 파일을, 없으면 Web Audio로 합성한 임시 효과음을 재생합니다.
 const FILES = {
-  gun_shot: '/sounds/gun_shot.mp3',
+  rifle_shot: '/sounds/rifle_shot.mp3',
+  pistol_shot: '/sounds/pistol_shot.mp3',
+  bot_shot: '/sounds/bot_shot.mp3',
   hit_marker: '/sounds/hit_marker.mp3',
   reload: '/sounds/reload.mp3',
   headshot: '/sounds/headshot.mp3', // 선택
   hurt: '/sounds/hurt.mp3', // 선택
+  footstep_1: '/sounds/footstep_1.mp3',
+  footstep_2: '/sounds/footstep_2.mp3',
 }
 
 let ctx = null
@@ -69,10 +73,12 @@ const clack = (t, v) => {
 }
 
 const SYNTH = {
-  gun_shot: (t, v, r) => {
+  rifle_shot: (t, v, r) => {
     noise(t, 0.16, { f0: 6000 * r, f1: 500, gain: 0.9 * v })
     tone(t, 0.12, 150 * r, 45, { type: 'triangle', gain: 0.8 * v })
   },
+  pistol_shot: (t, v, r) => SYNTH.rifle_shot(t, v * 0.85, r * 1.15),
+  bot_shot: (t, v, r) => SYNTH.rifle_shot(t, v, r * 0.9),
   hit_marker: (t, v) => {
     tone(t, 0.05, 1900, 1300, { type: 'square', gain: 0.22 * v })
     noise(t, 0.04, { type: 'highpass', f0: 3000, f1: 2500, gain: 0.3 * v })
@@ -103,6 +109,8 @@ const SYNTH = {
     tone(t, 0.25, 140, 60, { type: 'triangle', gain: 0.9 * v })
     noise(t, 0.2, { f0: 1200, f1: 200, gain: 0.6 * v })
   },
+  footstep_1: (t, v) => noise(t, 0.08, { type: 'lowpass', f0: 900, f1: 180, gain: 0.35 * v }),
+  footstep_2: (t, v) => noise(t, 0.08, { type: 'lowpass', f0: 760, f1: 150, gain: 0.35 * v }),
 }
 
 export function play(name, { volume = 1, rate = 1 } = {}) {

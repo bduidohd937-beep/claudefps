@@ -241,8 +241,11 @@ export default function Bot() {
     refs.resetBot = (pos) => {
       const b = body.current
       Object.assign(st, {
-        hp: 100, dead: false, flash: 0, seen: false, lastSeen: -9, state: 'seek', burstLeft: 0,
-        restUntil: 0, coverPos: null, nextShot: 0, speed: 0, unstuckUntil: 0,
+        hp: 100, dead: false, deadAt: 0, flash: 0, seen: false, seenAt: 0,
+        lastSeen: -9, los: false, nextLos: 0, state: 'seek', nextShot: 0,
+        burstLeft: 0, restUntil: 0, aimHead: false, coverPos: null, coverUntil: 0,
+        nextCover: 0, hurtAt: -9, speed: 0, stuckAt: 0, unstuckUntil: 0,
+        flashUntil: 0,
       })
       if (b) {
         b.setEnabled(true)
@@ -331,7 +334,7 @@ export default function Bot() {
       }
     }
     st.flashUntil = now() + 0.05
-    play('gun_shot', { volume: THREE.MathUtils.clamp(1 - dist / 90, 0.25, 1) * 0.8, rate: 0.78 + Math.random() * 0.1 })
+    play('bot_shot', { volume: THREE.MathUtils.clamp(1 - dist / 90, 0.25, 1) * 0.8, rate: 0.78 + Math.random() * 0.1 })
   }
 
   useFrame((_, delta) => {
@@ -346,7 +349,7 @@ export default function Bot() {
     const cfg = DIFF[useGame.getState().difficulty] || DIFF[3]
 
     if (p.y < CFG.killY) {
-      const s = SPAWNS.bot
+      const s = refs.safeBotSpawn || SPAWNS.bot
       b.setTranslation({ x: s[0], y: s[1], z: s[2] }, true)
       b.setLinvel({ x: 0, y: 0, z: 0 }, true)
       return

@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import { CFG, SPAWNS } from '../config'
 import { live, refs } from '../store'
 import { camBegin, camEnd } from '../fx'
+import { play } from '../audio'
 import { useKeys } from './useKeys'
 
 export default function Player() {
@@ -21,6 +22,8 @@ export default function Player() {
     groundRay: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 }),
     eye: CFG.eyeStand,
     vel: { x: 0, y: 0, z: 0 },
+    nextStep: 0,
+    step: 0,
   }), [rapier])
 
   useFrame((state, delta) => {
@@ -37,7 +40,7 @@ export default function Player() {
     const vel = rb.linvel()
 
     if (pos.y < CFG.killY) {
-      const s = SPAWNS.player
+      const s = refs.safePlayerSpawn || SPAWNS.player
       rb.setTranslation({ x: s[0], y: s[1], z: s[2] }, true)
       rb.setLinvel({ x: 0, y: 0, z: 0 }, true)
       return
@@ -80,6 +83,18 @@ export default function Player() {
 
     // 이동 탄 퍼짐 (클래식 브레이킹)
     const speed = Math.hypot(vx, vz)
+    const elapsed = state.clock.elapsedTime
+    if (active && grounded && speed > CFG.brakeThreshold) {
+      if (elapsed >= tmp.nextStep) {
+        play(tmp.step++ % 2 ? 'footstep_2' : 'footstep_1', {
+          volume: crouch ? 0.28 : run ? 0.58 : 0.42,
+          rate: run ? 1.08 : crouch ? 0.88 : 1,
+        })
+        tmp.nextStep = elapsed + (run ? 0.3 : crouch ? 0.56 : 0.43)
+      }
+    } else {
+      tmp.nextStep = elapsed + 0.08
+    }
     const moving = THREE.MathUtils.clamp(
       (speed - CFG.brakeThreshold) / (CFG.runSpeed - CFG.brakeThreshold), 0, 1,
     )

@@ -1,6 +1,8 @@
-여기에 맵 GLB 파일을 넣으세요. (파일명은 src/config.js 의 MAPS 와 일치해야 합니다)
+포함된 맵
+- fps_map_pvp_pve_games.glb (`?map=pvp`)
 
-- fps_map_pvp_pve_games.glb
+추가 맵 GLB 파일은 파일명이 `src/config.js`의 `MAPS`와 일치해야 합니다.
+
 - brutalist_concrete_map_free_retro_prop.glb
 - warface_pvp_map_fps.glb
 
