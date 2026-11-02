@@ -118,8 +118,10 @@ export default function Player() {
       if (lowWall && topOpen) {
         const x = pos.x + fwdX * 1.04
         const z = pos.z + fwdZ * 1.04
-        const floor = cast(x, pos.y + 1.45, z, 0, -1, 0, 2.5)
-        if (floor) {
+        ray.origin.x = x; ray.origin.y = pos.y + 1.45; ray.origin.z = z
+        ray.dir.x = 0; ray.dir.y = -1; ray.dir.z = 0
+        const floor = world.castRayAndGetNormal(ray, 2.5, true, undefined, undefined, undefined, undefined, notSelf)
+        if (floor && floor.normal.y >= 0.72) {
           const groundY = pos.y + 1.45 - floor.timeOfImpact
           const centerY = groundY + CFG.capsuleHalfHeight + CFG.capsuleRadius + 0.05
           const climb = centerY - pos.y
