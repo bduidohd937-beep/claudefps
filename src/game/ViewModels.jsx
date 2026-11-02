@@ -11,24 +11,23 @@ import { Rifle, Pistol, Knife } from './GunModels'
 export const VM = {
   rifle: {
     url: '/models/weapons/aks74u.glb',
-    pos: [0.24, -0.24, -0.73], scale: 1, rotY: 0,
-    displaySize: 0.9,
-    muzzle: [0, 0, -0.65],
+    pos: [0, 0, 0], scale: 1, rotY: 0, // V0.2 원본: 정상 표시된 소총 설정 유지
+    muzzle: [0.0, -0.03, -1.0],
     clips: { idle: 'Fire_single', fire: 'Fire_single', reload: 'Reload_t', reloadEmpty: 'Reload_f', draw: 'Put_in', run: 'Fire_sprite' },
     fireSpeed: 1.8,
   },
   pistol: {
     url: '/models/weapons/pistol.glb',
-    pos: [0.23, -0.26, -0.66], scale: 1, rotY: 0,
-    displaySize: 0.58,
-    muzzle: [0, 0, -0.48],
+    pos: [0.27, -0.23, -0.53], scale: 1, rotY: 0,
+    displaySize: 0.82,
+    muzzle: [0.0, -0.03, -0.75],
     clips: { idle: 'Shot', fire: 'Shot', reload: 'Reloat_t', reloadEmpty: 'Reloat_f', run: 'Run', walk: 'Walk' },
     fireSpeed: 1.3,
   },
   knife: {
     url: '/models/weapons/knife.glb',
-    pos: [0.28, -0.25, -0.66], scale: 1, rotY: 0,
-    displaySize: 0.65, // GLB 단위와 무관하게 크기 정규화
+    pos: [0.34, -0.29, -0.57], scale: 1, rotY: 0,
+    displaySize: 0.44, // 나이프 모델만 개별 정규화
     clips: { idle: 'anims' },
     idleTime: 0,
   },
@@ -125,7 +124,8 @@ function GlbViewModel({ id, apiRef, flashRef }) {
   const built = useMemo(() => {
     const root = cloneSkinned(scene)
     fixMaterials(root)
-    // GLB마다 다른 원점/단위(cm, m)를 정규화해 카메라를 덮거나 사라지는 현상 방지.
+    // 기존에 정상 표시되던 소총은 변형하지 않는다. 권총/나이프만 개별 정규화한다.
+    if (!def.displaySize) return { root, api: makeApi(root, animations, def), center: null, modelScale: 1 }
     root.updateMatrixWorld(true)
     const bounds = new THREE.Box3().setFromObject(root)
     const center = bounds.getCenter(new THREE.Vector3())
@@ -144,11 +144,13 @@ function GlbViewModel({ id, apiRef, flashRef }) {
 
   return (
     <group>
-      <group scale={built.modelScale}>
-        <group position={[-built.center.x, -built.center.y, -built.center.z]}>
-          <primitive object={built.root} />
+      {built.center ? (
+        <group scale={built.modelScale}>
+          <group position={[-built.center.x, -built.center.y, -built.center.z]}>
+            <primitive object={built.root} />
+          </group>
         </group>
-      </group>
+      ) : <primitive object={built.root} />}
       {def.muzzle && (
         <mesh ref={flashRef} position={def.muzzle} visible={false} frustumCulled={false}>
           <planeGeometry args={[0.22, 0.22]} />
