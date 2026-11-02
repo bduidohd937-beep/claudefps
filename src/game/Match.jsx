@@ -245,6 +245,8 @@ export default function Match() {
       off()
       refs.resetRound = null
       refs.snapSpawn = null
+      refs.validateSpawn = null
+      refs.randomSafeSpawn = null
     }
   }, [camera, findSafeSpawn])
 
