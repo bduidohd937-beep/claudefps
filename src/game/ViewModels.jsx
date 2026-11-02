@@ -13,7 +13,7 @@ export const VM = {
     url: '/models/weapons/aks74u.glb',
     pos: [0, 0, 0], scale: 1, rotY: 0, // V0.2 원본: 정상 표시된 소총 설정 유지
     muzzle: [0.0, -0.03, -1.0],
-    clips: { idle: 'Fire_single', fire: 'Fire_single', reload: 'Reload_t', reloadEmpty: 'Reload_f', draw: 'Put_in', run: 'Fire_sprite' },
+    clips: { idle: 'Fire_single', fire: 'Fire_single', reload: 'Reload_t', reloadEmpty: 'Reload_f', draw: 'Put_in' },
     fireSpeed: 1.8,
   },
   pistol: {
