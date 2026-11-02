@@ -1,7 +1,9 @@
-import { Component, Suspense, useMemo } from 'react'
+import { Component, Suspense, useEffect, useMemo } from 'react'
 import { RigidBody } from '@react-three/rapier'
 import { useGLTF } from '@react-three/drei'
 import { ACTIVE_MAP } from '../config'
+import { refs } from '../store'
+import * as THREE from 'three'
 
 // 내장 테스트 아레나: GLB 없이도 이동/탄퍼짐 테스트 가능
 const CRATES = [
@@ -14,6 +16,10 @@ const CRATES = [
 ]
 
 function Arena() {
+  useEffect(() => {
+    refs.mapBounds = { min: [-30, 0, -30], max: [30, 6, 30], center: [0, 3, 0] }
+    return () => { refs.mapBounds = null }
+  }, [])
   return (
     <RigidBody type="fixed" colliders="cuboid">
       <mesh position={[0, -0.5, 0]}>
@@ -47,6 +53,21 @@ function GlbMap({ url, scale }) {
       }
     })
   }, [scene])
+  // 사용자 스폰 편집기에서 실제 GLB 맵 범위를 볼 수 있도록 공유.
+  useEffect(() => {
+    const box = new THREE.Box3().setFromObject(scene)
+    if (box.isEmpty()) return
+    const min = box.min.clone().multiplyScalar(scale).toArray()
+    const max = box.max.clone().multiplyScalar(scale).toArray()
+    if (![...min, ...max].every(Number.isFinite)) return
+    refs.mapBounds = {
+      min, max,
+      center: min.map((v, i) => (v + max[i]) / 2),
+    }
+    console.info('[map] GLB bounds', refs.mapBounds)
+    return () => { refs.mapBounds = null }
+  }, [scene, scale])
+
   // 정적 맵: 트라이메시 콜라이더 (큰 맵은 초기 로딩이 조금 걸릴 수 있음)
   return (
     <RigidBody type="fixed" colliders="trimesh">
