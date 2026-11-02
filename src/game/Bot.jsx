@@ -10,6 +10,8 @@ import { WEAPONS, calcDamage } from '../weapons'
 import { absorbArmor } from '../economy'
 import { enemies, targetMeshes } from '../enemies'
 import { play } from '../audio'
+import { on } from '../fx'
+import { canBotFire, investigationTarget, validStepHeight } from './AITactics.js'
 import { spawnImpact } from './Impacts'
 
 useGLTF.preload(BOT_MODEL_URL)
@@ -208,6 +210,7 @@ export default function Bot() {
   const tmp = useMemo(() => ({
     losRay: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }),
     probeRay: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }),
+    groundRay: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 }),
     mid: new THREE.Vector3(),
     notBot: (c) => c.parent()?.handle !== body.current?.handle,
   }), [rapier])
@@ -218,6 +221,8 @@ export default function Bot() {
     state: 'seek', nextShot: 0, burstLeft: 0, restUntil: 0, reloadUntil: 0, aimHead: false,
     strafe: 1, strafeUntil: 0, coverPos: null, coverUntil: 0, nextCover: 0,
     hurtAt: -9, stuckAt: 0, stuckX: 0, stuckZ: 0, unstuckUntil: 0, ux: 0, uz: 0, flashUntil: 0,
+    lastKnown: null, heardAt: -9, investigateUntil: 0, nextHear: 0,
+    patrolGoal: null, nextPatrol: 0, nextHop: 0, avoidSign: 0, avoidUntil: 0,
   })
 
   // 레지스트리 등록 (플레이어 사격 판정이 사용)
@@ -237,6 +242,8 @@ export default function Bot() {
         st.hurtAt = now()
         // 맞으면 즉시 플레이어를 인지
         if (!st.seen) { st.seen = true; st.seenAt = now() - 0.3 }
+        const target = refs.playerBody?.translation()
+        if (target) { st.lastKnown = { x: target.x, z: target.z }; st.investigateUntil = now() + 5 }
         st.lastSeen = now()
         if (st.hp === 0) {
           st.dead = true
@@ -247,6 +254,23 @@ export default function Bot() {
         }
         return { killed: false }
       },
+    })
+    const offNoise = on('combatNoise', ({ position, radius, kind }) => {
+      const b = body.current
+      if (!b || st.dead || live.phase !== 'live' || !Array.isArray(position)) return
+      const p = b.translation()
+      const distance = Math.hypot(p.x - position[0], p.y - position[1], p.z - position[2])
+      const time = now()
+      if (distance > radius || (kind === 'footstep' && time < st.nextHear)) return
+      // Inexact hearing: a gunshot is more informative than a distant footstep.
+      const uncertainty = Math.min(kind === 'gunshot' ? 2.6 : 5, 0.6 + distance * 0.09)
+      st.lastKnown = {
+        x: position[0] + rand(-uncertainty, uncertainty),
+        z: position[2] + rand(-uncertainty, uncertainty),
+      }
+      st.heardAt = time
+      st.investigateUntil = time + (kind === 'gunshot' ? 7 : 4)
+      st.nextHear = time + (kind === 'gunshot' ? 0.8 : 0.55)
     })
     const ms = [head.current, torso.current, legs.current]
     ms.forEach((m) => targetMeshes.push(m))
@@ -259,7 +283,8 @@ export default function Bot() {
         lastSeen: -9, los: false, nextLos: 0, state: 'seek', nextShot: 0, reloadUntil: 0,
         burstLeft: 0, restUntil: 0, aimHead: false, coverPos: null, coverUntil: 0,
         nextCover: 0, hurtAt: -9, speed: 0, stuckAt: 0, unstuckUntil: 0,
-        flashUntil: 0,
+        flashUntil: 0, lastKnown: null, heardAt: -9, investigateUntil: 0,
+        nextHear: 0, patrolGoal: null, nextPatrol: 0, nextHop: 0, avoidSign: 0, avoidUntil: 0,
       })
       if (b) {
         b.setEnabled(true)
@@ -268,6 +293,7 @@ export default function Bot() {
       }
     }
     return () => {
+      offNoise()
       enemies.delete('bot')
       refs.resetBot = null
       ms.forEach((m) => {
@@ -295,6 +321,27 @@ export default function Bot() {
     return h ? h.timeOfImpact : len
   }
 
+  // Find a patrol point on the SAME collision floor with a mostly clear short approach.
+  // This is deliberately local steering, not a claim of full multi-floor pathfinding.
+  const choosePatrol = (p) => {
+    const ray = tmp.groundRay
+    for (let i = 0; i < 18; i++) {
+      const angle = rand(0, Math.PI * 2)
+      const distance = rand(4, 13)
+      const dx = Math.cos(angle), dz = Math.sin(angle)
+      if (probe(p.x, p.y - 0.05, p.z, dx, dz, distance) < distance - 0.6) continue
+      const x = p.x + dx * distance, z = p.z + dz * distance
+      ray.origin.x = x; ray.origin.y = p.y + 1.4; ray.origin.z = z
+      ray.dir.x = 0; ray.dir.y = -1; ray.dir.z = 0
+      const ground = world.castRayAndGetNormal(ray, 3.4, true, undefined, undefined, undefined, undefined, tmp.notBot)
+      if (!ground || ground.normal.y < 0.72) continue
+      const floorY = ray.origin.y - ground.timeOfImpact
+      if (Math.abs(floorY - (p.y - CFG.capsuleHalfHeight - CFG.capsuleRadius)) > 0.55) continue
+      return { x, z }
+    }
+    return null
+  }
+
   // 플레이어 시야가 막히는 가까운 지점 찾기 (엄폐)
   const findCover = (p, ex, ey, ez) => {
     let best = null
@@ -309,6 +356,14 @@ export default function Bot() {
       const tx = camera.position.x - cx, ty = camera.position.y - ey, tz = camera.position.z - cz
       const dist = Math.hypot(tx, ty, tz)
       if (hasLos(cx, ey, cz, tx, ty, tz, dist)) continue // 여전히 보임
+      // A tactical cover point must have a standable floor at the bot's current level.
+      const ray = tmp.groundRay
+      ray.origin.x = cx; ray.origin.y = p.y + 1.25; ray.origin.z = cz
+      ray.dir.x = 0; ray.dir.y = -1; ray.dir.z = 0
+      const floor = world.castRayAndGetNormal(ray, 3.0, true, undefined, undefined, undefined, undefined, tmp.notBot)
+      if (!floor || floor.normal.y < 0.72) continue
+      const floorY = ray.origin.y - floor.timeOfImpact
+      if (Math.abs(floorY - (p.y - CFG.capsuleHalfHeight - CFG.capsuleRadius)) > 0.55) continue
       if (r < bestD) { bestD = r; best = { x: cx, z: cz } }
     }
     return best
@@ -384,7 +439,7 @@ export default function Bot() {
     const active = !st.dead && live.phase === 'live' && live.locked && !live.dead
     const pp = refs.playerBody?.translation()
     const v = b.linvel()
-    let dirx = 0, dirz = 0, spd = 0
+    let dirx = 0, dirz = 0, spd = 0, hop = false
 
     if (active && pp) {
       const ex = p.x, ey = p.y + 0.7, ez = p.z
@@ -401,10 +456,14 @@ export default function Bot() {
       if (st.los) {
         if (!st.seen) { st.seen = true; st.seenAt = t }
         st.lastSeen = t
-      } else if (st.seen && t - st.lastSeen > 1.2) {
+        st.lastKnown = { x: pp.x, z: pp.z }
+        st.investigateUntil = t + 5
+        st.patrolGoal = null
+      } else if (st.seen && t - st.lastSeen > 0.55) {
         st.seen = false
       }
-      const canShoot = st.seen && t - st.seenAt >= cfg.react
+      // Never fire on stale sight / through walls just because a target was seen earlier.
+      const canShoot = canBotFire({ visible: st.los, spotted: st.seen, seenAt: st.seenAt, time: t, reaction: cfg.react })
 
       // ── 이동 의도 ──
       if (st.state === 'cover' && st.coverPos) {
@@ -412,9 +471,29 @@ export default function Bot() {
         const cd = Math.hypot(cx, cz)
         if (cd < 0.8 || t > st.coverUntil) { st.state = 'seek'; st.coverPos = null }
         else { dirx = cx / cd; dirz = cz / cd; spd = cfg.speed * 1.15 }
-      } else if (!st.seen) {
-        st.state = 'seek'
-        dirx = toX; dirz = toZ; spd = cfg.speed
+      } else if (!st.los) {
+        // Investigate the last visible/heard location, NOT the current player coordinates.
+        let goal = investigationTarget({ visible: st.los, lastKnown: st.lastKnown,
+          investigateUntil: st.investigateUntil, patrolGoal: null, time: t })
+        if (goal && Math.hypot(goal.x - p.x, goal.z - p.z) < 1.7) {
+          st.investigateUntil = 0
+          st.lastKnown = null
+          goal = null
+        }
+        if (!goal) {
+          if (t >= st.nextPatrol || (st.patrolGoal &&
+            Math.hypot(st.patrolGoal.x - p.x, st.patrolGoal.z - p.z) < 1.5)) {
+            st.patrolGoal = choosePatrol(p)
+            st.nextPatrol = t + rand(4, 8)
+          }
+          goal = st.patrolGoal
+        }
+        st.state = st.lastKnown && goal === st.lastKnown ? 'investigate' : 'patrol'
+        if (goal) {
+          const gx = goal.x - p.x, gz = goal.z - p.z
+          const d = Math.hypot(gx, gz)
+          if (d > 0.5) { dirx = gx / d; dirz = gz / d; spd = cfg.speed * (st.state === 'patrol' ? 0.65 : 0.9) }
+        }
       } else {
         st.state = 'engage'
         // 체력이 낮거나 맞은 직후 → 엄폐 (난이도 3 이상)
@@ -437,9 +516,36 @@ export default function Bot() {
         }
       }
 
-      // ── 장애물 회피 / 끼임 탈출 ──
+      // ── 낮은 장애물 점프 / 벽 회피 / 끼임 탈출 ──
       if (spd > 0) {
-        if (t < st.unstuckUntil) { dirx = st.ux; dirz = st.uz }
+        if (t > st.nextHop && Math.abs(v.y) < 0.15) {
+          const low = probe(p.x, p.y - 0.32, p.z, dirx, dirz, 1.0)
+          const upper = probe(p.x, p.y + 0.72, p.z, dirx, dirz, 1.15)
+          if (low < 0.85 && upper > 1.0) {
+            const ray = tmp.groundRay
+            ray.origin.x = p.x + dirx * 1.15
+            ray.origin.y = p.y + 1.45
+            ray.origin.z = p.z + dirz * 1.15
+            ray.dir.x = 0; ray.dir.y = -1; ray.dir.z = 0
+            const floor = world.castRayAndGetNormal(ray, 2.4, true, undefined, undefined, undefined, undefined, tmp.notBot)
+            if (floor && floor.normal.y > 0.72) {
+              const centerY = ray.origin.y - floor.timeOfImpact + CFG.capsuleHalfHeight + CFG.capsuleRadius
+              if (validStepHeight(centerY - p.y)) {
+                const ground = world.castRay(
+                  new rapier.Ray({ x: p.x, y: p.y, z: p.z }, { x: 0, y: -1, z: 0 }),
+                  0.97, true, undefined, undefined, undefined, undefined, tmp.notBot,
+                )
+                if (ground) {
+                  hop = true
+                  st.nextHop = t + 1.35
+                }
+              }
+            }
+          }
+        }
+        if (hop) {
+          // Keep the current desired direction and use the normal jump impulse.
+        } else if (t < st.unstuckUntil) { dirx = st.ux; dirz = st.uz }
         else {
           const fwd = probe(p.x, p.y - 0.2, p.z, dirx, dirz, 1.6)
           if (fwd < 1.2) {
@@ -449,8 +555,15 @@ export default function Bot() {
             const lf = probe(p.x, p.y - 0.2, p.z, lx, lz, 1.6)
             const rf = probe(p.x, p.y - 0.2, p.z, rx, rz, 1.6)
             const c2 = Math.cos(1.1), s2 = Math.sin(1.1)
-            if (lf >= rf) { const nx = dirx * c2 - dirz * s2; dirz = dirx * s2 + dirz * c2; dirx = nx }
-            else { const nx = dirx * c2 + dirz * s2; dirz = -dirx * s2 + dirz * c2; dirx = nx }
+            // Keep one wall-following side briefly, preventing rapid left/right oscillation.
+            if (t > st.avoidUntil) {
+              st.avoidSign = lf >= rf ? 1 : -1
+              st.avoidUntil = t + 1.25
+            }
+            const sign = st.avoidSign || 1
+            const nx = dirx * c2 - sign * dirz * s2
+            dirz = sign * dirx * s2 + dirz * c2
+            dirx = nx
           }
         }
         if (t - st.stuckAt > 1) {
@@ -485,7 +598,7 @@ export default function Bot() {
       }
 
       // 몸 방향: 발견했으면 플레이어 쪽, 아니면 이동 방향
-      const target = st.seen ? Math.atan2(dx, dz) : spd > 0.3 ? Math.atan2(dirx, dirz) : st.yaw
+      const target = st.los ? Math.atan2(dx, dz) : spd > 0.3 ? Math.atan2(dirx, dirz) : st.yaw
       let diff = target - st.yaw
       diff = Math.atan2(Math.sin(diff), Math.cos(diff))
       st.yaw += diff * (1 - Math.exp(-10 * dt))
@@ -495,7 +608,7 @@ export default function Bot() {
     const f = 1 - Math.exp(-12 * dt)
     const vx = v.x + (dirx * spd - v.x) * f
     const vz = v.z + (dirz * spd - v.z) * f
-    if (!st.dead) b.setLinvel({ x: vx, y: v.y, z: vz }, true)
+    if (!st.dead) b.setLinvel({ x: vx, y: hop ? CFG.jumpVelocity : v.y, z: vz }, true)
     st.speed = Math.hypot(vx, vz)
 
     // 사망 시 뒤로 쓰러짐 / 평상시 yaw 적용

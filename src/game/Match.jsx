@@ -83,7 +83,7 @@ export default function Match() {
     resolve.randomNear = (base, avoid, previous, radius, minimumDistance) => {
       if (!base) return null
       const valid = []
-      for (let i = 0; i < 32; i++) {
+      for (let i = 0; i < 64; i++) {
         const angle = Math.random() * Math.PI * 2
         const distance = radius * (0.35 + Math.random() * 0.65)
         const x = base[0] + Math.cos(angle) * distance
@@ -98,9 +98,21 @@ export default function Match() {
         // 다른 층이나 지붕은 다른 네비게이션 영역일 수 있으므로 제외.
         if (Math.abs(centerY - base[1]) > 2.0) continue
         if (!hasClearance(x, floorY, z)) continue
-        valid.push([x, centerY, z])
+        // Prefer a different part of the playable floor, without instant line-of-sight spawn fights.
+        const recentDistance = previous ? Math.hypot(x - previous[0], z - previous[2]) : radius
+        const opponentDistance = avoid ? Math.hypot(x - avoid[0], z - avoid[2]) : minimumDistance * 2
+        const from = [x, centerY + 0.5, z]
+        const dx = avoid ? avoid[0] - x : 0, dz = avoid ? avoid[2] - z : 0
+        const distanceToOpponent = Math.hypot(dx, dz)
+        const blocked = avoid && distanceToOpponent > 0.1 && cast(from,
+          [dx / distanceToOpponent, 0, dz / distanceToOpponent], distanceToOpponent - 0.3)
+        const exposed = !!avoid && opponentDistance < 15 && !blocked
+        const score = Math.min(recentDistance, radius) * 0.7 +
+          Math.min(opponentDistance, 25) * 0.3 + Math.random() * 2 - (exposed ? 14 : 0)
+        valid.push({ pos: [x, centerY, z], score })
       }
-      return valid.length ? valid[Math.floor(Math.random() * valid.length)] : null
+      valid.sort((a, b) => b.score - a.score)
+      return valid.length ? valid[Math.floor(Math.random() * Math.min(valid.length, 5))].pos : null
     }
     return resolve
   }, [world, rapier])
@@ -113,8 +125,8 @@ export default function Match() {
       const span = bounds
         ? Math.min(bounds.max[0] - bounds.min[0], bounds.max[2] - bounds.min[2])
         : 20
-      // 큰 맵은 최대 12m, 작은 맵은 1.5m 범위에서만 위치를 바꿈.
-      const radius = Math.min(12, Math.max(1.5, span * 0.23))
+      // Larger arenas can explore different sectors; small maps keep conservative ranges.
+      const radius = Math.min(22, Math.max(1.5, span * 0.29))
       const minimumDistance = Math.min(CFG.spawnMinDistance, Math.max(2.5, span * 0.33))
       const basePlayer = SPAWN_MANUAL.player
         ? findSafeSpawn.at(SPAWNS.player) : findSafeSpawn(SPAWNS.player)

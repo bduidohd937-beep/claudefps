@@ -205,6 +205,7 @@ export default function WeaponSystem() {
     live.fireSpread = Math.min(live.fireSpread + w.fireSpread, w.fireSpreadMax)
     t.flashUntil = now + 0.032
     play(w.sound || (w.slot === 'secondary' ? 'pistol_shot' : 'rifle_shot'), { rate: 0.96 + Math.random() * 0.08 })
+    emit('combatNoise', { position: camera.position.toArray(), radius: w.id === 'awp' ? 75 : 58, kind: 'gunshot' })
     apis[w.id].current?.play('fire', { timeScale: VM[w.id].fireSpeed || 1, fade: 0.02, restart: true })
 
     if (a.mag - 1 <= 0) startReload() // 탄창이 비면 자동 재장전
@@ -215,6 +216,7 @@ export default function WeaponSystem() {
     live.swing = 1
     live.crossKick = 0.6
     play('knife_swing')
+    emit('combatNoise', { position: camera.position.toArray(), radius: 7, kind: 'melee' })
     camera.getWorldDirection(t.dir)
     t.origin.copy(camera.position)
     const wh = worldRay(w.range)

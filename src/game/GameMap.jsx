@@ -1,4 +1,4 @@
-import { Component, Suspense, useEffect, useMemo } from 'react'
+import { Component, useEffect, useMemo } from 'react'
 import { RigidBody } from '@react-three/rapier'
 import { useGLTF } from '@react-three/drei'
 import { ACTIVE_MAP } from '../config'
@@ -91,9 +91,9 @@ export default function GameMap() {
   if (!ACTIVE_MAP.url) return <Arena />
   return (
     <MapBoundary>
-      <Suspense fallback={<Arena />}>
-        <GlbMap url={ACTIVE_MAP.url} scale={ACTIVE_MAP.scale} />
-      </Suspense>
+      {/* Let App's outer Suspense hold the entire Physics world until this GLB is ready.
+          That prevents players and the bot from falling before map colliders exist. */}
+      <GlbMap url={ACTIVE_MAP.url} scale={ACTIVE_MAP.scale} />
     </MapBoundary>
   )
 }
