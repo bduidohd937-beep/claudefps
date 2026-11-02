@@ -22,7 +22,7 @@ export const MAP_SETTINGS = {
   brutalist: { scale: 1, spawn: [0, 5, 0], botSpawn: [0, 5, -15] },
   warface: { scale: 1, spawn: [0, 4, 4], botSpawn: [0, 4, -4] },
   fps: { scale: 1, spawn: [0, 8, 15], botSpawn: [10, 8, -15] },
-  ghost: { scale: 1, spawn: [18, 32, 14], botSpawn: [28, 32, 28] },
+  ghost: { scale: 1, spawn: [0, 8, 4], botSpawn: [0, 8, 15] },
   offense: { scale: 1, spawn: [0, 5, 0], botSpawn: [0, 5, -15] },
 }
 
