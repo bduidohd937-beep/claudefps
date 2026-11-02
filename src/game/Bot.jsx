@@ -6,6 +6,8 @@ import * as THREE from 'three'
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { BOT_MODEL_URL, CFG, SPAWNS } from '../config'
 import { live, refs, useGame } from '../store'
+import { WEAPONS, calcDamage } from '../weapons'
+import { absorbArmor } from '../economy'
 import { enemies, targetMeshes } from '../enemies'
 import { play } from '../audio'
 import { spawnImpact } from './Impacts'
@@ -22,13 +24,12 @@ const randInt = (a, b) => Math.floor(rand(a, b + 1))
 // react: 플레이어 발견 후 첫 사격까지 지연(초) / err: 기본 조준 오차(도) / moveErr: 이동 중 추가 오차
 // headChance: 버스트마다 머리를 조준할 확률 / brake: true면 멈춰 서서 쏨(브레이킹) / cover: 엄폐 사용
 const DIFF = {
-  1: { react: 1.0, err: 7.0, moveErr: 4.0, dmg: 8, interval: 0.5, burst: [1, 2], rest: [0.9, 1.6], headChance: 0.02, speed: 2.6, brake: false, cover: false },
-  2: { react: 1.0, err: 5.0, moveErr: 3.5, dmg: 10, interval: 0.38, burst: [2, 3], rest: [0.7, 1.3], headChance: 0.05, speed: 3.0, brake: false, cover: false },
-  3: { react: 0.4, err: 3.0, moveErr: 2.5, dmg: 13, interval: 0.22, burst: [3, 5], rest: [0.5, 1.0], headChance: 0.15, speed: 3.4, brake: false, cover: true },
-  4: { react: 0.2, err: 1.6, moveErr: 2.0, dmg: 16, interval: 0.15, burst: [4, 7], rest: [0.35, 0.8], headChance: 0.5, speed: 3.8, brake: true, cover: true },
-  5: { react: 0.2, err: 0.9, moveErr: 1.6, dmg: 19, interval: 0.12, burst: [5, 8], rest: [0.25, 0.55], headChance: 0.7, speed: 4.1, brake: true, cover: true },
+  1: { react: 1.2, err: 7.0, moveErr: 4.0, dmg: 8, interval: 0.5, burst: [1, 2], rest: [0.9, 1.6], headChance: 0.01, speed: 2.6, brake: false, cover: false },
+  2: { react: 0.8, err: 5.0, moveErr: 3.5, dmg: 10, interval: 0.38, burst: [2, 3], rest: [0.7, 1.3], headChance: 0.03, speed: 3.0, brake: false, cover: false },
+  3: { react: 0.5, err: 3.0, moveErr: 2.5, dmg: 13, interval: 0.22, burst: [3, 5], rest: [0.5, 1.0], headChance: 0.07, speed: 3.4, brake: false, cover: true },
+  4: { react: 0.38, err: 1.6, moveErr: 2.0, dmg: 16, interval: 0.15, burst: [4, 7], rest: [0.35, 0.8], headChance: 0.12, speed: 3.8, brake: true, cover: true },
+  5: { react: 0.3, err: 0.9, moveErr: 1.6, dmg: 19, interval: 0.12, burst: [5, 8], rest: [0.25, 0.55], headChance: 0.18, speed: 4.1, brake: true, cover: true },
 }
-const HEAD_DMG_MUL = 2
 
 // ───────── 봇 모델 (swat.glb: ValveBiped 본, 애니메이션 클립 없음 → 코드로 자세/걷기 구현) ─────────
 const _q = new THREE.Quaternion()
@@ -161,17 +162,26 @@ class Boundary extends Component {
 }
 
 // 봇이 들고 있는 임시 소총 (+z 방향이 총구)
-function BotGun({ gunRef, flashRef }) {
+function BotGun({ gunRef, flashRef, weapon }) {
   const m = (p, s, c) => (
     <mesh position={p}><boxGeometry args={s} /><meshStandardMaterial color={c} roughness={0.6} metalness={0.3} /></mesh>
   )
   return (
     <group ref={gunRef}>
-      {m([0, 0, 0.05], [0.06, 0.1, 0.5], '#2b3036')}
-      {m([0, 0.01, 0.45], [0.028, 0.028, 0.4], '#1c2024')}
-      {m([0, -0.01, -0.28], [0.05, 0.11, 0.2], '#3b3f44')}
-      {m([0, -0.12, 0.08], [0.045, 0.16, 0.07], '#1f2327')}
-      <mesh ref={flashRef} position={[0, 0.01, 0.72]} visible={false}>
+      {weapon === 'pistol' ? (
+        <>
+          {m([0, 0.04, 0.12], [0.09, 0.095, 0.28], '#222831')}
+          {m([0, -0.08, 0], [0.07, 0.24, 0.10], '#30353a')}
+        </>
+      ) : (
+        <>
+          {m([0, 0, 0.05], [0.06, 0.1, 0.5], '#2b3036')}
+          {m([0, 0.01, 0.45], [0.028, 0.028, 0.4], '#1c2024')}
+          {m([0, -0.01, -0.28], [0.05, 0.11, 0.2], '#3b3f44')}
+          {m([0, -0.12, 0.08], [0.045, 0.16, 0.07], '#1f2327')}
+        </>
+      )}
+      <mesh ref={flashRef} position={weapon === 'pistol' ? [0, 0.05, 0.29] : [0, 0.01, 0.72]} visible={false}>
         <planeGeometry args={[0.35, 0.35]} />
         <meshBasicMaterial color="#ffd27a" transparent blending={THREE.AdditiveBlending} side={THREE.DoubleSide} />
       </mesh>
@@ -192,6 +202,7 @@ export default function Bot() {
   const barWrap = useRef()
   const barFill = useRef()
   const camera = useThree((s) => s.camera)
+  const botWeapon = useGame((s) => s.botEconomy.weapon)
   const { world, rapier } = useRapier()
 
   const tmp = useMemo(() => ({
@@ -204,7 +215,7 @@ export default function Bot() {
   const S = useRef({
     hp: 100, dead: false, deadAt: 0, deadYaw: 0, flash: 0, yaw: 0, speed: 0,
     seen: false, seenAt: 0, lastSeen: -9, los: false, nextLos: 0,
-    state: 'seek', nextShot: 0, burstLeft: 0, restUntil: 0, aimHead: false,
+    state: 'seek', nextShot: 0, burstLeft: 0, restUntil: 0, reloadUntil: 0, aimHead: false,
     strafe: 1, strafeUntil: 0, coverPos: null, coverUntil: 0, nextCover: 0,
     hurtAt: -9, stuckAt: 0, stuckX: 0, stuckZ: 0, unstuckUntil: 0, ux: 0, uz: 0, flashUntil: 0,
   })
@@ -218,7 +229,10 @@ export default function Bot() {
       get hp() { return st.hp },
       takeDamage(dmg) {
         if (st.dead) return { killed: false }
-        st.hp = Math.max(0, st.hp - dmg)
+        const econ = useGame.getState()
+        const hit = absorbArmor(st.hp, econ.botEconomy.armor, dmg)
+        st.hp = hit.hp
+        econ.setBotArmor(hit.armor)
         st.flash = 0.1
         st.hurtAt = now()
         // 맞으면 즉시 플레이어를 인지
@@ -242,7 +256,7 @@ export default function Bot() {
       const b = body.current
       Object.assign(st, {
         hp: 100, dead: false, deadAt: 0, flash: 0, seen: false, seenAt: 0,
-        lastSeen: -9, los: false, nextLos: 0, state: 'seek', nextShot: 0,
+        lastSeen: -9, los: false, nextLos: 0, state: 'seek', nextShot: 0, reloadUntil: 0,
         burstLeft: 0, restUntil: 0, aimHead: false, coverPos: null, coverUntil: 0,
         nextCover: 0, hurtAt: -9, speed: 0, stuckAt: 0, unstuckUntil: 0,
         flashUntil: 0,
@@ -300,11 +314,11 @@ export default function Bot() {
     return best
   }
 
-  const botShoot = (cfg, st, ex, ey, ez, pp, dist) => {
+  const botShoot = (cfg, st, ex, ey, ez, pp, dist, weapon) => {
     // 조준점: 몸통 또는 머리
     const ty = pp.y + (st.aimHead ? 0.62 : 0.05)
     let dx = pp.x - ex, dy = ty - ey, dz = pp.z - ez
-    const L = Math.hypot(dx, dy, dz)
+    const L = Math.hypot(dx, dy, dz) || 1
     dx /= L; dy /= L; dz /= L
     // 오차 원뿔 (이동 중이면 오차 증가)
     const err = cfg.err + (st.speed > 1.2 ? cfg.moveErr : 0)
@@ -327,14 +341,17 @@ export default function Bot() {
       if (h.collider.parent()?.handle === refs.playerBody?.handle) {
         const hitY = ey + (fy / fl) * t
         const headHit = hitY > pp.y + 0.45
-        const dmg = Math.round(cfg.dmg * (headHit ? HEAD_DMG_MUL : 1))
-        useGame.getState().damagePlayer(dmg, { headshot: headHit, weapon: 'AKS-74u' })
+        const dmg = Math.round(calcDamage(weapon, headHit ? 'head' : 'body', dist))
+        useGame.getState().damagePlayer(dmg, { headshot: headHit, weapon: weapon.name })
       } else {
         spawnImpact(ex + (fx / fl) * t, ey + (fy / fl) * t, ez + (fz / fl) * t)
       }
     }
     st.flashUntil = now() + 0.05
-    play('bot_shot', { volume: THREE.MathUtils.clamp(1 - dist / 90, 0.25, 1) * 0.8, rate: 0.78 + Math.random() * 0.1 })
+    play(weapon.id === 'rifle' ? 'rifle_shot' : 'pistol_shot', {
+      volume: THREE.MathUtils.clamp(1 - dist / 90, 0.15, 0.7),
+      rate: 0.94 + Math.random() * 0.09,
+    })
   }
 
   useFrame((_, delta) => {
@@ -346,7 +363,14 @@ export default function Bot() {
     const t = now()
     const st = S.current
     const p = b.translation()
-    const cfg = DIFF[useGame.getState().difficulty] || DIFF[3]
+    const game = useGame.getState()
+    const cfg = DIFF[game.difficulty] || DIFF[3]
+    const loadout = game.botEconomy
+    const currentWeapon = WEAPONS[loadout.weapon] || WEAPONS.pistol
+    if (st.reloadUntil > 0 && t >= st.reloadUntil) {
+      game.botReload()
+      st.reloadUntil = 0
+    }
 
     if (p.y < CFG.killY) {
       const s = refs.safeBotSpawn || SPAWNS.bot
@@ -438,17 +462,25 @@ export default function Bot() {
         }
       }
 
-      // ── 사격 ──
-      if (canShoot && st.state === 'engage' && t >= st.nextShot) {
-        if (st.burstLeft <= 0 && t >= st.restUntil) {
-          st.burstLeft = randInt(cfg.burst[0], cfg.burst[1])
-          st.aimHead = Math.random() < cfg.headChance
-        }
-        if (st.burstLeft > 0 && (!cfg.brake || st.speed < 1.1)) {
-          botShoot(cfg, st, ex, ey, ez, pp, dist)
-          st.burstLeft--
-          st.nextShot = t + cfg.interval
-          if (st.burstLeft === 0) st.restUntil = t + rand(cfg.rest[0], cfg.rest[1])
+      // ── 사격 · 탄창 · 재장전 (플레이어와 같은 총기 데이터 사용) ──
+      if (active && !st.reloadUntil && t >= st.nextShot) {
+        const slot = useGame.getState().botEconomy.ammo[currentWeapon.id]
+        if (slot.mag <= 0 && slot.reserve > 0) {
+          st.reloadUntil = t + currentWeapon.reloadTimeEmpty
+          st.burstLeft = 0
+          st.nextShot = st.reloadUntil
+          play('reload', { volume: 0.3 })
+        } else if (slot.mag > 0 && canShoot && st.state === 'engage') {
+          if (st.burstLeft <= 0 && t >= st.restUntil) {
+            st.burstLeft = randInt(cfg.burst[0], cfg.burst[1])
+            st.aimHead = Math.random() < cfg.headChance
+          }
+          if (st.burstLeft > 0 && (!cfg.brake || st.speed < 1.1) && game.botShot()) {
+            botShoot(cfg, st, ex, ey, ez, pp, dist, currentWeapon)
+            st.burstLeft--
+            st.nextShot = t + Math.max(cfg.interval, currentWeapon.fireInterval)
+            if (st.burstLeft === 0) st.restUntil = t + rand(cfg.rest[0], cfg.rest[1])
+          }
         }
       }
 
@@ -515,7 +547,7 @@ export default function Bot() {
             <SwatModel ref={visual} />
           </Suspense>
         </Boundary>
-        <BotGun gunRef={gun} flashRef={flash} />
+        <BotGun gunRef={gun} flashRef={flash} weapon={botWeapon} />
 
         {/* 보이지 않는 히트박스: 머리 3x / 몸통 1x / 다리 0.75x */}
         <mesh ref={legs} position={[0, 0.45, 0]} visible={false} userData={{ enemyId: 'bot', part: 'legs' }}>
