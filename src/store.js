@@ -15,6 +15,14 @@ const readSens = () => {
   }
 }
 
+const savedCrosshair = (key, fallback) => {
+  try { return localStorage.getItem(key) || fallback } catch { return fallback }
+}
+const savedCrosshairMode = ['dot', 'cross', 'dynamic'].includes(savedCrosshair('claudefps.crosshair.mode', 'dynamic'))
+  ? savedCrosshair('claudefps.crosshair.mode', 'dynamic') : 'dynamic'
+const savedCrosshairColor = /^#[0-9a-f]{6}$/i.test(savedCrosshair('claudefps.crosshair.color', '#ffffff'))
+  ? savedCrosshair('claudefps.crosshair.color', '#ffffff') : '#ffffff'
+
 const now = () => performance.now() / 1000
 
 // React 리렌더가 필요한 UI 상태만 여기에 둡니다.
@@ -32,6 +40,18 @@ export const useGame = create((set, get) => ({
     set(open ? { spawnEditorOpen: true, tunerOpen: false } : { spawnEditorOpen: false })
     if (open) live.tuner = false
     if (open) refs.unlock?.()
+  },
+  crosshairMode: savedCrosshairMode,
+  crosshairColor: savedCrosshairColor,
+  setCrosshairMode: (mode) => {
+    if (!['dot', 'cross', 'dynamic'].includes(mode)) return
+    try { localStorage.setItem('claudefps.crosshair.mode', mode) } catch {}
+    set({ crosshairMode: mode })
+  },
+  setCrosshairColor: (color) => {
+    if (!/^#[0-9a-f]{6}$/i.test(color)) return
+    try { localStorage.setItem('claudefps.crosshair.color', color) } catch {}
+    set({ crosshairColor: color })
   },
   sensitivity: readSens(),
   lock: () => {}, // Controls 컴포넌트가 실제 함수로 교체
@@ -80,6 +100,12 @@ export const useGame = create((set, get) => ({
     if (!get().owned[id]) return
     live.weapon = id // 실제 교체 연출/딜레이는 WeaponSystem이 감지해서 처리
     set({ weapon: id })
+  },
+  equipSlot: (slot) => {
+    const state = get()
+    // Only one paid weapon per slot. Glock and knife return when the player dies.
+    const id = Object.keys(WEAPONS).find((key) => state.owned[key] && WEAPONS[key].slot === slot)
+    if (id) state.equip(id)
   },
 
   // 플레이어 피격: 아머가 데미지의 66%를 먼저 흡수, 나머지만 HP 차감
@@ -213,7 +239,7 @@ export const useGame = create((set, get) => ({
   buy: (id) => {
     const st = get()
     if (st.phase !== 'buy') return { ok: false, msg: '구매 시간이 지났습니다' }
-    const price = { armor_half: 650, armor_full: 1000, rifle: WEAPONS.rifle.price, pistol: 0 }[id]
+    const price = { armor_half: 650, armor_full: 1000 }[id] ?? WEAPONS[id]?.price
     if (price === undefined) return { ok: false, msg: '지원하지 않는 품목입니다' }
     if (st.money < price) return { ok: false, msg: '소지금이 부족합니다' }
     const pay = () => set((s) => ({ money: s.money - price }))
@@ -223,17 +249,21 @@ export const useGame = create((set, get) => ({
       if (st.armor >= target) return { ok: false, msg: '해당 방어구 이상을 이미 보유 중입니다' }
       pay()
       set((s) => ({ armor: Math.min(CFG.armorMax, target) }))
-    } else if (id === 'rifle') {
-      if (st.owned.rifle) return { ok: false, msg: '이미 보유 중입니다' }
+    } else if (WEAPONS[id] && !WEAPONS[id].melee) {
+      if (st.owned[id]) {
+        get().equip(id)
+        return { ok: true, msg: WEAPONS[id].name + ' 장착' }
+      }
+      const slot = WEAPONS[id].slot
       pay()
       set((s) => ({
-        owned: { ...s.owned, rifle: true },
-        ammo: { ...s.ammo, rifle: { mag: WEAPONS.rifle.mag, reserve: WEAPONS.rifle.reserve } },
+        owned: Object.fromEntries(Object.keys(WEAPONS).map((key) => [
+          key,
+          key === id ? true : WEAPONS[key].slot === slot ? false : !!s.owned[key],
+        ])),
+        ammo: { ...s.ammo, [id]: { mag: WEAPONS[id].mag, reserve: WEAPONS[id].reserve } },
       }))
-      get().equip('rifle')
-    } else if (id === 'pistol') {
-      get().equip('pistol')
-      return { ok: true, msg: 'Glock 장착' }
+      get().equip(id)
     }
     play('buy')
     return { ok: true, msg: '구매 완료' }

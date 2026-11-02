@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { live, useGame } from '../store'
 import { VM } from '../game/ViewModels'
+import { WEAPONS, WEAPON_IDS } from '../weapons'
 
 const defaultTune = () => ({ x: 0, y: 0, z: 0, s: 1, rx: 0, ry: 0, rz: 0 })
 const options = [
@@ -58,15 +59,15 @@ export default function WeaponTuner() {
         <button style={button} onClick={() => setOpen(false)}>닫기</button>
       </div>
       <p style={{ fontSize: 12, color: '#b8c1cb', lineHeight: 1.5 }}>
-        원본 GLB 애니메이션 유지 · 즉시 반영 · 무기별 브라우저 저장
+        기존 총기는 원본 GLB, 신규 총기는 임시 모델 · 즉시 반영 · 자동 저장
       </p>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        {['rifle', 'pistol', 'knife'].map((id) => (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 12 }}>
+        {WEAPON_IDS.map((id) => (
           <button key={id} disabled={useGame.getState().phase !== 'menu' && !useGame.getState().owned[id]}
             onClick={() => displayWeapon(id)}
             style={{ ...button, opacity: useGame.getState().phase !== 'menu' && !useGame.getState().owned[id] ? 0.45 : 1,
-              background: weapon === id ? '#a75822' : '#303942', flex: 1 }}>
-            {{ rifle: 'AK', pistol: '권총', knife: '나이프' }[id]}
+              background: weapon === id ? '#a75822' : '#303942', minWidth: '29%', flex: '1 0 29%', fontSize: 11 }}>
+            {WEAPONS[id].name}
           </button>
         ))}
       </div>

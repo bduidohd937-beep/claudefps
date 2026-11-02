@@ -5,7 +5,7 @@ import { WEAPONS } from './weapons.js'
 export const initialAmmo = () => Object.fromEntries(
   Object.values(WEAPONS).map((w) => [w.id, { mag: w.mag, reserve: w.reserve }]),
 )
-export const initialOwned = () => ({ rifle: false, pistol: true, knife: true })
+export const initialOwned = () => Object.fromEntries(Object.keys(WEAPONS).map((id) => [id, id === 'pistol' || id === 'knife']))
 export const initialBotEconomy = () => ({
   money: MATCH.startMoney, armor: 0, weapon: 'pistol',
   owned: initialOwned(), ammo: initialAmmo(), lossStreak: 0,
@@ -62,17 +62,24 @@ export function autoBuyBot(kit, round) {
     owned: { ...kit.owned },
     ammo: { ...kit.ammo },
   }
-  if (round > 1 && !next.owned.rifle && next.money >= WEAPONS.rifle.price) {
-    next.money -= WEAPONS.rifle.price
-    next.owned.rifle = true
-    next.weapon = 'rifle'
+  const ownedPrimary = Object.keys(next.owned).some((id) => next.owned[id] && WEAPONS[id]?.slot === 'primary')
+  if (round > 1 && !ownedPrimary) {
+    // Starts every match pistol-only; later buys only what its earned cash permits.
+    const desired = next.money >= WEAPONS.rifle.price ? 'rifle'
+      : next.money >= WEAPONS.mp5.price ? 'mp5' : null
+    if (desired) {
+      next.money -= WEAPONS[desired].price
+      next.owned[desired] = true
+      next.weapon = desired
+    }
   }
+  const hasPrimary = Object.keys(next.owned).some((id) => next.owned[id] && WEAPONS[id]?.slot === 'primary')
   if (next.armor < CFG.armorMax && next.money >= 1000 &&
-      (round === 1 || next.owned.rifle || next.money >= WEAPONS.rifle.price + 1000)) {
+      (round === 1 || hasPrimary || next.money >= WEAPONS.rifle.price + 1000)) {
     next.money -= 1000
     next.armor = Math.min(CFG.armorMax, next.armor + 100)
   } else if (next.armor < 50 && next.money >= 650 &&
-      (round === 1 || next.owned.rifle)) {
+      (round === 1 || hasPrimary)) {
     next.money -= 650
     next.armor = Math.min(CFG.armorMax, next.armor + 50)
   }

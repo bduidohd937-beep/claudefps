@@ -29,8 +29,8 @@ function Parts({ parts }) {
 function Flash({ flash, z }) {
   return (
     <mesh ref={flash} position={[0, 0.01, z]} renderOrder={1100} visible={false} frustumCulled={false}>
-      <planeGeometry args={[0.2, 0.2]} />
-      <meshBasicMaterial color="#ffd27a" transparent depthTest={false} blending={THREE.AdditiveBlending} />
+      <planeGeometry args={[0.085, 0.085]} />
+      <meshBasicMaterial color="#ffd27a" opacity={0.48} transparent depthTest={false} blending={THREE.AdditiveBlending} />
     </mesh>
   )
 }
@@ -64,3 +64,37 @@ export const Knife = forwardRef(function Knife(_, ref) {
     </group>
   )
 })
+
+
+// Asset-free proxy viewmodels: game-ready until appropriately licensed GLB files arrive.
+const GUN_LOOK = {
+  m4a1: { kind: 'rifle', length: 0.58, barrel: 0.46, color: '#59666b', mag: 0.16 },
+  mp5: { kind: 'smg', length: 0.34, barrel: 0.26, color: '#323a44', mag: 0.19 },
+  shotgun: { kind: 'pump', length: 0.61, barrel: 0.5, color: '#464b50', mag: 0 },
+  awp: { kind: 'sniper', length: 0.77, barrel: 0.75, color: '#384c3d', mag: 0.12 },
+  deagle: { kind: 'pistol', length: 0.27, barrel: 0.16, color: '#667078', mag: 0 },
+}
+
+export function PrototypeGun({ id, flashRef }) {
+  const look = GUN_LOOK[id]
+  if (!look) return null
+  const pistol = look.kind === 'pistol'
+  const r = look.length
+  const components = [
+    { p: [0, 0, -r * .21], s: [pistol ? .075 : .065, .09, r * .67], c: look.color },
+    { p: [0, .015, -r * .76], s: [pistol ? .04 : .027, .033, look.barrel], c: '#262c33' },
+    { p: [0, -.11, .06], s: [.045, .15, .07], c: '#232932', r: [-.15, 0, 0] },
+    { p: [0, .08, -r * .24], s: [.025, .025, .11], c: '#7e888d' },
+  ]
+  if (!pistol) components.push({ p: [0, -.02, r * .36], s: [.062, .09, .21], c: '#333a42' })
+  if (look.mag) components.push({ p: [0, -.15, -r * .1], s: [.043, look.mag, .055], c: '#242b33' })
+  if (look.kind === 'sniper') components.push({ p: [0, .105, -.18], s: [.08, .08, .29], c: '#171c1f' })
+  if (look.kind === 'pump') components.push({ p: [0, -.035, -.43], s: [.092, .08, .2], c: '#777161' })
+  if (look.kind === 'smg') components.push({ p: [0, .065, -.22], s: [.055, .025, .16], c: '#20252a' })
+  return (
+    <group>
+      <Parts parts={components} />
+      <Flash flash={flashRef} z={-(r * .76 + look.barrel * .5)} />
+    </group>
+  )
+}

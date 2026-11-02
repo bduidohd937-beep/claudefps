@@ -4,7 +4,7 @@ import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { live } from '../store'
-import { Rifle, Pistol, Knife } from './GunModels'
+import { Rifle, Pistol, Knife, PrototypeGun } from './GunModels'
 
 // 총기 GLB 설정. 방향/크기가 어색하면 게임 중 F2 튜너로 맞춘 뒤 값을 여기에 반영하세요.
 // clips: 게임 동작 → GLB 안의 애니메이션 이름 끝부분 (대소문자 무시)
@@ -13,7 +13,7 @@ export const VM = {
     url: '/models/weapons/aks74u.glb',
     pos: [0, 0, 0], scale: 1, rotY: 0, // V0.2 원본: 정상 표시된 소총 설정 유지
     muzzle: [0.0, -0.03, -1.0],
-    clips: { idle: 'Fire_single', fire: 'Fire_single', reload: 'Reload_t', reloadEmpty: 'Reload_f', draw: 'Put_in', run: 'Fire_sprite' },
+    clips: { idle: 'Fire_single', fire: 'Fire_single', reload: 'Reload_t', reloadEmpty: 'Reload_f', draw: 'Put_in' },
     fireSpeed: 1.8,
   },
   pistol: {
@@ -23,6 +23,11 @@ export const VM = {
     clips: { idle: 'Shot', fire: 'Shot', reload: 'Reloat_t', reloadEmpty: 'Reloat_f', run: 'Run', walk: 'Walk' },
     fireSpeed: 1.3,
   },
+  m4a1: { url: null, pos: [0.2, -0.19, -0.42], scale: 1, rotY: 0, clips: {} },
+  mp5: { url: null, pos: [0.2, -0.19, -0.42], scale: 1, rotY: 0, clips: {} },
+  shotgun: { url: null, pos: [0.2, -0.19, -0.42], scale: 1, rotY: 0, clips: {} },
+  awp: { url: null, pos: [0.2, -0.19, -0.42], scale: 1, rotY: 0, clips: {} },
+  deagle: { url: null, pos: [0.2, -0.19, -0.42], scale: 1, rotY: 0, clips: {} },
   knife: {
     url: '/models/weapons/knife.glb',
     pos: [0.40, -0.38, -0.78], scale: 0.006, rotY: 0, // cm-scale model with full arms
@@ -30,9 +35,9 @@ export const VM = {
     idleTime: 0,
   },
 }
-export const FALLBACK_BASE = { rifle: [0.2, -0.19, -0.42], pistol: [0.2, -0.19, -0.42], knife: [0.25, -0.2, -0.45] }
+export const FALLBACK_BASE = { rifle: [0.2, -0.19, -0.42], pistol: [0.2, -0.19, -0.42], knife: [0.25, -0.2, -0.45], m4a1: [0.21, -0.2, -0.43], mp5: [0.24, -0.21, -0.4], shotgun: [0.24, -0.19, -0.48], awp: [0.24, -0.2, -0.5], deagle: [0.23, -0.2, -0.39] }
 
-Object.values(VM).forEach((v) => useGLTF.preload(v.url))
+Object.values(VM).forEach((v) => { if (v.url) useGLTF.preload(v.url) })
 
 // 광택(metalness)이 높은 재질은 환경맵이 없으면 새까맣게 보여서 낮춥니다.
 function fixMaterials(root) {
@@ -137,8 +142,8 @@ function GlbViewModel({ id, apiRef, flashRef }) {
       <primitive object={built.root} />
       {def.muzzle && (
         <mesh ref={flashRef} position={def.muzzle} visible={false} frustumCulled={false}>
-          <planeGeometry args={[0.22, 0.22]} />
-          <meshBasicMaterial color="#ffd27a" transparent depthTest={false} blending={THREE.AdditiveBlending} />
+          <planeGeometry args={[0.09, 0.09]} />
+          <meshBasicMaterial color="#ffd27a" opacity={0.45} transparent depthTest={false} blending={THREE.AdditiveBlending} />
         </mesh>
       )}
     </group>
@@ -152,6 +157,7 @@ function FallbackGun({ id, flashRef }) {
   }, [id])
   if (id === 'rifle') return <Rifle flash={flashRef} />
   if (id === 'pistol') return <Pistol flash={flashRef} />
+  if (id !== 'knife') return <PrototypeGun id={id} flashRef={flashRef} />
   return <Knife />
 }
 
@@ -163,6 +169,8 @@ class Boundary extends Component {
 }
 
 export function VMSlot({ id, apiRef, flashRef }) {
+  // No licensed GLB available for these new guns yet; intentional in-game proxy.
+  if (!VM[id]?.url) return <FallbackGun id={id} flashRef={flashRef} />
   return (
     <Boundary id={id} fallback={<FallbackGun id={id} flashRef={flashRef} />}>
       <Suspense fallback={null}>

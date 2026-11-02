@@ -120,8 +120,8 @@ export default function WeaponSystem() {
 
       if (e.repeat || !canAct()) return
       if (e.code === 'KeyR') startReload()
-      else if (e.code === 'Digit1') useGame.getState().equip('rifle')
-      else if (e.code === 'Digit2') useGame.getState().equip('pistol')
+      else if (e.code === 'Digit1') useGame.getState().equipSlot('primary')
+      else if (e.code === 'Digit2') useGame.getState().equipSlot('secondary')
       else if (e.code === 'Digit3') useGame.getState().equip('knife')
       else if (e.code === 'KeyH') useGame.getState().damagePlayer(18) // 피격 연출 테스트
     }
@@ -169,37 +169,42 @@ export default function WeaponSystem() {
     const a = st.ammo[w.id]
     st.setAmmo(w.id, a.mag - 1, a.reserve)
 
-    const r = Math.tan(live.totalSpread * DEG) * Math.sqrt(Math.random())
-    const ang = Math.random() * Math.PI * 2
-    t.dir.set(Math.cos(ang) * r, Math.sin(ang) * r, -1).normalize().applyQuaternion(camera.quaternion)
-    t.origin.copy(camera.position)
+    // Shotgun pellets use independent raycasts, whereas regular guns fire one hitscan shot.
+    const pellets = w.pellets || 1
+    const pelletSpread = w.pelletSpread || 0
+    for (let i = 0; i < pellets; i++) {
+      const spread = Math.max(0.01, live.totalSpread + pelletSpread)
+      const r = Math.tan(spread * DEG) * Math.sqrt(Math.random())
+      const ang = Math.random() * Math.PI * 2
+      t.dir.set(Math.cos(ang) * r, Math.sin(ang) * r, -1).normalize().applyQuaternion(camera.quaternion)
+      t.origin.copy(camera.position)
 
-    const wh = worldRay(CFG.maxRange)
-    const worldDist = wh ? wh.timeOfImpact : CFG.maxRange
+      const wh = worldRay(CFG.maxRange)
+      const worldDist = wh ? wh.timeOfImpact : CFG.maxRange
+      t.rc.set(t.origin, t.dir)
+      t.rc.near = 0
+      t.rc.far = worldDist
+      const hits = t.rc.intersectObjects(targetMeshes, false)
+      const hit = hits.find((h) => !enemies.get(h.object.userData.enemyId)?.dead)
 
-    t.rc.set(t.origin, t.dir)
-    t.rc.near = 0
-    t.rc.far = worldDist
-    const hits = t.rc.intersectObjects(targetMeshes, false)
-    const hit = hits.find((h) => !enemies.get(h.object.userData.enemyId)?.dead)
-
-    if (hit) {
-      const dmg = Math.round(calcDamage(w, hit.object.userData.part, hit.distance))
-      hitEnemy(hit, w, dmg)
-    } else if (wh) {
-      const px = t.origin.x + t.dir.x * worldDist
-      const py = t.origin.y + t.dir.y * worldDist
-      const pz = t.origin.z + t.dir.z * worldDist
-      spawnImpact(px, py, pz)
-      burst(px, py, pz, wh.normal.x, wh.normal.y, wh.normal.z, 'dust')
+      if (hit) {
+        const dmg = Math.round(calcDamage(w, hit.object.userData.part, hit.distance))
+        hitEnemy(hit, w, dmg)
+      } else if (wh && (pellets === 1 || i === 0)) {
+        const px = t.origin.x + t.dir.x * worldDist
+        const py = t.origin.y + t.dir.y * worldDist
+        const pz = t.origin.z + t.dir.z * worldDist
+        spawnImpact(px, py, pz)
+        burst(px, py, pz, wh.normal.x, wh.normal.y, wh.normal.z, 'dust')
+      }
     }
 
     kick(camera, w.recoil.pitch, (Math.random() * 2 - 1) * w.recoil.yaw)
     live.viewKick = Math.min(live.viewKick + 1, 2)
     live.crossKick = 1
     live.fireSpread = Math.min(live.fireSpread + w.fireSpread, w.fireSpreadMax)
-    t.flashUntil = now + 0.05
-    play(w.id === 'rifle' ? 'rifle_shot' : 'pistol_shot', { rate: 0.95 + Math.random() * 0.1 })
+    t.flashUntil = now + 0.032
+    play(w.sound || (w.slot === 'secondary' ? 'pistol_shot' : 'rifle_shot'), { rate: 0.96 + Math.random() * 0.08 })
     apis[w.id].current?.play('fire', { timeScale: VM[w.id].fireSpeed || 1, fade: 0.02, restart: true })
 
     if (a.mag - 1 <= 0) startReload() // 탄창이 비면 자동 재장전
@@ -315,7 +320,7 @@ export default function WeaponSystem() {
     if (fl && now < t.flashUntil) {
       fl.visible = true
       fl.rotation.z = Math.random() * Math.PI
-      fl.scale.setScalar(0.8 + Math.random() * 0.5)
+      fl.scale.setScalar(0.55 + Math.random() * 0.25)
     }
   })
 

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ACTIVE_MAP, CFG, MAP_CHOICES, MAPS, MATCH, TRAINING } from '../config'
 import { useGame } from '../store'
+import CrosshairSettings from './CrosshairSettings'
 import './MainMenu.css'
 
 const LEVELS = [
@@ -71,7 +72,7 @@ export default function MainMenu() {
       <div className="lobby-glow" aria-hidden="true" />
       <header className="lobby-top">
         <div className="lobby-brand"><span className="lobby-brand-mark">C<span>:</span></span> CLAUDE<span>FPS</span></div>
-        <div className="lobby-build">CLASSIC DUEL <b>V0.2.7</b></div>
+        <div className="lobby-build">CLASSIC DUEL <b>V0.2.9</b></div>
       </header>
 
       <section className="lobby-body" aria-label="FPS 시작 화면">
@@ -146,12 +147,15 @@ export default function MainMenu() {
           <div className="lobby-options">
             <button type="button" className="lobby-options-trigger" aria-expanded={showOptions}
               onClick={() => setShowOptions((v) => !v)}>
-              <span>조작 설정</span><span>{showOptions ? '접기 −' : '열기 +'}</span>
+              <span>조작·조준선 설정</span><span>{showOptions ? '접기 −' : '열기 +'}</span>
             </button>
             {showOptions && <div className="lobby-sensitivity">
               <label htmlFor="lobby-sens">마우스 감도 <b>{sensitivity.toFixed(2)}</b></label>
               <input id="lobby-sens" type="range" min={CFG.sensMin} max={CFG.sensMax} step="0.05"
                 value={sensitivity} onChange={(e) => setSensitivity(Number(e.target.value))} />
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #46505b' }}>
+                <CrosshairSettings />
+              </div>
               <p>무기 위치·기울기는 대전 진입 후 F2에서 실제 3D 모델을 보며 조정할 수 있어.</p>
             </div>}
           </div>

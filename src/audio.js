@@ -78,6 +78,26 @@ const SYNTH = {
     tone(t, 0.12, 150 * r, 45, { type: 'triangle', gain: 0.8 * v })
   },
   pistol_shot: (t, v, r) => SYNTH.rifle_shot(t, v * 0.85, r * 1.15),
+  m4_shot: (t, v, r) => {
+    SYNTH.rifle_shot(t, v * 0.72, r * 1.15)
+    clack(t + .045, v * .5)
+  },
+  smg_shot: (t, v, r) => {
+    noise(t, .10, { f0: 4400*r, f1: 800, gain: .65*v })
+    tone(t, .075, 210*r, 90, { type: 'triangle', gain: .35*v })
+  },
+  shotgun_shot: (t, v, r) => {
+    noise(t, .30, { f0: 4400*r, f1: 160, gain: 1.1*v })
+    tone(t, .2, 130*r, 40, { type: 'triangle', gain: .7*v })
+  },
+  sniper_shot: (t, v, r) => {
+    noise(t, .25, { f0: 6500*r, f1: 240, gain: 1.05*v })
+    tone(t, .26, 130*r, 40, { type: 'triangle', gain: .95*v })
+  },
+  deagle_shot: (t, v, r) => {
+    noise(t, .19, { f0: 5600*r, f1: 390, gain: .8*v })
+    tone(t, .16, 185*r, 55, { type: 'triangle', gain: .65*v })
+  },
   bot_shot: (t, v, r) => SYNTH.rifle_shot(t, v, r * 0.9),
   hit_marker: (t, v) => {
     tone(t, 0.05, 1900, 1300, { type: 'square', gain: 0.22 * v })

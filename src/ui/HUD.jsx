@@ -7,6 +7,7 @@ import { on } from '../fx'
 import { initAudio } from '../audio'
 import SpawnEditor from './SpawnEditor'
 import WeaponTuner from './WeaponTuner'
+import CrosshairSettings from './CrosshairSettings'
 import { toLobby } from './MainMenu'
 
 const STATE_LABEL = { stand: '정지', walk: '걷기', run: '달리기', crouch: '앉기', air: '공중' }
@@ -14,6 +15,8 @@ const STATE_LABEL = { stand: '정지', walk: '걷기', run: '달리기', crouch:
 // 크로스헤어: 실제 탄 퍼짐(도)을 화면 픽셀로 환산해서 벌어짐을 표시. 사격 시 미세 킥백.
 // 매 프레임 DOM을 직접 갱신하므로 React 리렌더가 발생하지 않습니다.
 function Crosshair() {
+  const mode = useGame((s) => s.crosshairMode)
+  const color = useGame((s) => s.crosshairColor)
   const parts = useRef({})
   const debug = useRef()
 
@@ -22,7 +25,7 @@ function Crosshair() {
     const halfFov = Math.tan((CFG.fov * Math.PI) / 360)
     const tick = () => {
       const px = (Math.tan((live.totalSpread * Math.PI) / 180) / halfFov) * (window.innerHeight / 2)
-      const gap = Math.max(3, px) + live.crossKick * 6
+      const gap = mode === 'dynamic' ? Math.max(3, px) + live.crossKick * 6 : 4
       const p = parts.current
       if (p.l) {
         p.l.style.transform = `translateX(${-gap - 9}px)`
@@ -50,12 +53,12 @@ function Crosshair() {
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [])
+  }, [mode])
 
   const set = (key) => (el) => { parts.current[key] = el }
   return (
     <>
-      <div className="crosshair">
+      <div className={'crosshair crosshair-' + mode} style={{ '--crosshair-color': color }}>
         <i className="h" ref={set('l')} />
         <i className="h" ref={set('r')} />
         <i className="v" ref={set('t')} />
@@ -273,7 +276,7 @@ function Shop() {
     setMsg(r.msg)
   }
   const stateOf = (it) => {
-    if (it.id === 'rifle' && owned.rifle) return '보유 중'
+    if (WEAPONS[it.id] && owned[it.id]) return it.id === weapon ? '장착 중' : '보유 중'
     if (it.id === 'pistol') return weapon === 'pistol' ? '장착 중' : '장착'
     if (it.id === 'armor_half' && armor >= 50) return '보유 중'
     if (it.id === 'armor_full' && armor >= 100) return '보유 중'
@@ -359,6 +362,10 @@ function PauseMenu() {
         <button className="start" onClick={() => { initAudio(); lock() }}>게임 계속하기</button>
         <button className="ghost" onClick={() => setTuner(true)}>무기 위치 조정 (F2)</button>
         <button className="ghost" onClick={() => setSpawn(true)}>스폰 위치 조정 (F6)</button>
+        <details style={{ marginTop: 14, marginBottom: 14, padding: 10, border: '1px solid #485361', borderRadius: 5 }}>
+          <summary style={{ cursor: 'pointer' }}>조준선 설정</summary>
+          <div style={{ marginTop: 12 }}><CrosshairSettings /></div>
+        </details>
         <button className="ghost" onClick={toLobby}>메인 메뉴로 돌아가기</button>
         <p className="hint">메인 메뉴에서는 맵과 AI 난이도를 변경할 수 있어.</p>
       </div>
