@@ -7,8 +7,10 @@ export const BOT_MODEL_URL = '/models/enemy.glb'
 export const MAPS = {
   arena: null, // 내장 테스트 아레나 (GLB 없이 동작)
   pvp: '/maps/fps_map_pvp_pve_games.glb',
-  brutalist: '/maps/brutalist_concrete_map_free_retro_prop.glb',
   warface: '/maps/warface_pvp_map_fps.glb',
+  brutalist: '/maps/brutalist_concrete_map_free_retro_prop.glb',
+  fps: '/maps/fps_map.glb',
+  ghost: '/maps/fps_map_ghost_city.glb',
   offense: '/maps/lethal_company_offense_map.glb',
 }
 
@@ -18,9 +20,21 @@ export const MAP_SETTINGS = {
   arena: { scale: 1, spawn: [0, 2, 22], botSpawn: [0, 2, -22] },
   pvp: { scale: 1, spawn: [0, 5, 0], botSpawn: [0, 5, -15] },
   brutalist: { scale: 1, spawn: [0, 5, 0], botSpawn: [0, 5, -15] },
-  warface: { scale: 1, spawn: [0, 5, 0], botSpawn: [0, 5, -15] },
+  warface: { scale: 1, spawn: [0, 4, 4], botSpawn: [0, 4, -4] },
+  fps: { scale: 1, spawn: [0, 8, 15], botSpawn: [10, 8, -15] },
+  ghost: { scale: 1, spawn: [18, 32, 14], botSpawn: [28, 32, 28] },
   offense: { scale: 1, spawn: [0, 5, 0], botSpawn: [0, 5, -15] },
 }
+
+// Only include maps with known 3D assets in the selector. Offense is kept as a legacy URL but not recommended.
+export const MAP_CHOICES = [
+  { id: 'arena', label: '테스트 아레나', detail: '기본 맵 · 설치 불필요' },
+  { id: 'pvp', label: 'FPS PVP/PVE', detail: '약 22×42m · 1:1 추천' },
+  { id: 'warface', label: 'Warface PVP', detail: '약 24×15m · 근거리 전투' },
+  { id: 'brutalist', label: 'Brutalist', detail: '약 6×7m · 초소형 테스트' },
+  { id: 'fps', label: 'FPS Map', detail: '약 217×214m · 대형 전장' },
+  { id: 'ghost', label: 'Ghost City', detail: '약 127×115m · 도시형 전장' },
+]
 
 const mapKey = MAPS[params.get('map')] !== undefined ? params.get('map') : 'arena'
 
