@@ -110,54 +110,66 @@ export default function Match() {
       return [point[0], y, point[2]]
     }
 
-    // 기존에 찾은 안전 스폰 주변의 같은 높이 지면만 후보로 삼는다.
-    // 넓은 맵 전체를 무작위로 찍으면 지붕/허공/단절된 구역에 나타날 수 있어 금지.
+    // Collect collision-valid same-level locations once per anchor. Reuse the
+    // validated pool between rounds rather than casting thousands of rays each time.
+    const groundPools = new Map()
     resolve.randomNear = (base, avoid, previous, radius, minimumDistance) => {
       if (!base) return null
-      const valid = []
-      for (let i = 0; i < 96; i++) {
-        const angle = Math.random() * Math.PI * 2
-        const distance = radius * (0.35 + Math.random() * 0.65)
-        const x = base[0] + Math.cos(angle) * distance
-        const z = base[2] + Math.sin(angle) * distance
-        if (avoid && Math.hypot(x - avoid[0], z - avoid[2]) < minimumDistance) continue
-        if (previous && Math.hypot(x - previous[0], z - previous[2]) < Math.min(2.5, radius * 0.4)) continue
-        const top = base[1] + 2.5
-        const hit = cast([x, top, z], [0, -1, 0], 6, true)
-        if (!hit || hit.normal.y < 0.72) continue
-        const floorY = top - hit.timeOfImpact
-        const centerY = floorY + CFG.capsuleHalfHeight + CFG.capsuleRadius + 0.05
-        // 다른 층이나 지붕은 다른 네비게이션 영역일 수 있으므로 제외.
-        if (Math.abs(centerY - base[1]) > 2.0) continue
-        if (!hasClearance(x, floorY, z)) continue
+      const key = base.map((n) => n.toFixed(1)).join(':') + ':' + radius.toFixed(1)
+      let pool = groundPools.get(key)
+      if (!pool) {
+        pool = []
         const span = refs.mapBounds ? Math.min(
           refs.mapBounds.max[0] - refs.mapBounds.min[0],
           refs.mapBounds.max[2] - refs.mapBounds.min[2],
         ) : 20
-        const access = spawnQuality(x, floorY, z)
-        if (!spawnHasEscape(access.supported, access.exits, span > 25 ? 2 : 1)) continue
-        // Prefer a different part of the playable floor, without instant line-of-sight spawn fights.
+        for (let i = 0; i < 128; i++) {
+          const angle = Math.random() * Math.PI * 2
+          const distance = radius * (0.32 + Math.random() * 0.68)
+          const x = base[0] + Math.cos(angle) * distance
+          const z = base[2] + Math.sin(angle) * distance
+          const top = base[1] + 2.5
+          const floor = cast([x, top, z], [0, -1, 0], 6, true)
+          if (!floor || floor.normal.y < 0.72) continue
+          const groundY = top - floor.timeOfImpact
+          const centerY = groundY + CFG.capsuleHalfHeight + CFG.capsuleRadius + 0.05
+          if (Math.abs(centerY - base[1]) > 1.75 || !hasClearance(x, groundY, z)) continue
+          const access = spawnQuality(x, groundY, z)
+          if (!spawnHasEscape(access.supported, access.exits, span > 25 ? 2 : 1)) continue
+          pool.push({ pos: [x, centerY, z], exits: access.exits })
+        }
+        groundPools.set(key, pool)
+      }
+      const span = refs.mapBounds ? Math.min(
+        refs.mapBounds.max[0] - refs.mapBounds.min[0],
+        refs.mapBounds.max[2] - refs.mapBounds.min[2],
+      ) : 20
+      const valid = []
+      for (const candidate of pool) {
+        const [x, centerY, z] = candidate.pos
+        const opponentDistance = avoid ? Math.hypot(x - avoid[0], centerY - avoid[1], z - avoid[2]) : radius
+        if (avoid && opponentDistance < minimumDistance) continue
         const recentDistance = previous ? Math.hypot(x - previous[0], z - previous[2]) : radius
-        const opponentDistance = avoid ? Math.hypot(x - avoid[0], z - avoid[2]) : minimumDistance * 2
-        const from = [x, centerY + 0.5, z]
-        const dx = avoid ? avoid[0] - x : 0
-        const dy = avoid ? avoid[1] - centerY : 0
-        const dz = avoid ? avoid[2] - z : 0
-        const distanceToOpponent = Math.hypot(dx, dy, dz)
-        const blocked = avoid && distanceToOpponent > 0.5 && cast(from,
-          [dx / distanceToOpponent, dy / distanceToOpponent, dz / distanceToOpponent],
-          Math.max(0, distanceToOpponent - 0.45))
-        if (avoid && exposedAtCloseRange(distanceToOpponent, !!blocked)) continue
-        const coverDirections = [[1, 0], [-1, 0], [0, 1], [0, -1]]
-        const cover = !!avoid && coverDirections.some(([cx, cz]) =>
-          !!cast([x, centerY + 0.4, z], [cx, 0, cz], 5.5))
+        if (previous && recentDistance < Math.min(2.5, radius * 0.4)) continue
+        let blocked = false
+        if (avoid && opponentDistance > 0.5) {
+          const dx = avoid[0] - x, dy = avoid[1] - centerY, dz = avoid[2] - z
+          blocked = !!cast([x, centerY + 0.45, z],
+            [dx / opponentDistance, dy / opponentDistance, dz / opponentDistance],
+            Math.max(0, opponentDistance - 0.6))
+          if (exposedAtCloseRange(opponentDistance, blocked)) continue
+        }
+        // The actual line of sight toward the opponent matters more than any
+        // nearby wall that merely sits behind the spawn point.
+        if (avoid && span > 25 && opponentDistance < 40 && !blocked) continue
+        const cover = !!avoid && blocked
         if (avoid && exposedWithoutCover(opponentDistance, span, cover)) continue
         const score = spawnScore(recentDistance, opponentDistance, radius,
-          Math.random() * 2, (cover ? 5 : 0) + Math.min(access.exits, 5) * 0.55)
-        valid.push({ pos: [x, centerY, z], score })
+          Math.random() * 2, (cover ? 6 : 0) + Math.min(candidate.exits, 5) * 0.55)
+        valid.push({ pos: candidate.pos, score })
       }
       valid.sort((a, b) => b.score - a.score)
-      return valid.length ? valid[Math.floor(Math.random() * Math.min(valid.length, 5))].pos : null
+      return valid.length ? valid[Math.floor(Math.random() * Math.min(valid.length, 7))].pos : null
     }
     resolve.fairPair = (player, bot, mapSpan, minimumDistance) => {
       if (!player || !bot) return false
