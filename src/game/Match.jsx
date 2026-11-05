@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useRapier } from '@react-three/rapier'
-import { CFG, MATCH, SPAWNS, TRAINING, AUTO_ENTER, START_LEVEL, DYNAMIC_SPAWNS, saveSpawn, SPAWN_MANUAL, ACTIVE_MAP, NAV_DISABLED, SPAWN_NAV_DISABLED } from '../config'
+import { CFG, MATCH, SPAWNS, TRAINING, AUTO_ENTER, START_LEVEL, DYNAMIC_SPAWNS, saveSpawn, SPAWN_MANUAL, ACTIVE_MAP, NAV_DISABLED, SPAWN_NAV_DISABLED, SPAWN_ENGINE_V5 } from '../config'
 import { live, refs, useGame } from '../store'
 import { enemies } from '../enemies'
 import { cam, on } from '../fx'
 import { exposedAtCloseRange, exposedWithoutCover, spawnScore, spawnHasEscape } from './SpawnSafety.js'
 import { graphConnection, evaluateDuelSpawn } from './SpawnV5.js'
+import { buildSpawnZones, anchorZone, selectSpawnZonePair } from './SpawnZones.js'
 
 // 라운드 진행 로직: 라운드 리셋, 구매 타이머, 승패 판정, 킬 보상, 스폰 저장 단축키
 export default function Match() {
@@ -14,6 +15,7 @@ export default function Match() {
   const { world, rapier } = useRapier()
   const lastSpawns = useRef({ player: null, bot: null })
   const nextSpawnRetry = useRef(0)
+  const lastZonePair = useRef(null)
 
   const findSafeSpawn = useMemo(() => {
     const ray = new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 })
@@ -251,6 +253,27 @@ export default function Match() {
   }, [world, rapier])
 
   useEffect(() => {
+    const zoneCache = { graph: null, count: -1, zones: [] }
+    // Build map-wide SPAWN SECTORS only from the collision-reachable graph.
+    // Keep known anchor points as candidates, but NEVER accept them without
+    // running the same physical + route inspector as generated sectors.
+    const getZones = (playerAnchor, botAnchor) => {
+      const graph = refs.navigation?.graph
+      if (graph !== zoneCache.graph || (graph?.nodes.length ?? 0) !== zoneCache.count) {
+        zoneCache.graph = graph
+        zoneCache.count = graph?.nodes.length ?? 0
+        zoneCache.zones = buildSpawnZones(graph, { maxZones: 80 })
+      }
+      return [
+        anchorZone('player', playerAnchor),
+        anchorZone('bot', botAnchor),
+        ...zoneCache.zones,
+      ].filter(Boolean)
+    }
+    refs.getSpawnZones = () => getZones(
+      refs.safePlayerSpawn || SPAWNS.player,
+      refs.safeBotSpawn || SPAWNS.bot,
+    )
     // 라운드 시작 시 플레이어/봇 위치 초기화 + 서로 마주보게 설정
     refs.snapSpawn = (pos) => findSafeSpawn(pos, null, 1)
     refs.inspectSpawnPair = (player, bot) => findSafeSpawn.inspectPair(player, bot)
@@ -306,6 +329,67 @@ export default function Match() {
       let p = basePlayer
       let bp = baseBot
       let audit = null
+      const useZones = DYNAMIC_SPAWNS && !TRAINING && !SPAWN_ENGINE_V5 &&
+        !NAV_DISABLED && !SPAWN_NAV_DISABLED && ACTIVE_MAP.key !== 'arena'
+      if (useZones) {
+        const zones = getZones(basePlayer, baseBot)
+        const outcome = selectSpawnZonePair(zones, findSafeSpawn.inspectPair, {
+          previous: lastZonePair.current,
+          maxChecks: 60,
+          minSeparation: Math.max(8, minimumDistance),
+          maxRange: Math.min(130, Math.max(35, span * 1.04)),
+          fixedPlayer: SPAWN_MANUAL.player ? basePlayer : null,
+          fixedBot: SPAWN_MANUAL.bot ? baseBot : null,
+        })
+        const zoneReport = {
+          engine: 'v6', zones: zones.length,
+          graphZones: outcome.zoneCount,
+          checked: outcome.checked,
+          rejected: outcome.rejected,
+          rejectionCounts: outcome.rejectionCounts,
+          selected: outcome.selected && {
+            playerZone: outcome.selected.playerZone, botZone: outcome.selected.botZone,
+            score: outcome.selected.audit.score,
+            player: outcome.selected.player, bot: outcome.selected.bot,
+          },
+          graphNodes: refs.navigation?.graph?.nodes.length ?? 0,
+          graphPending: refs.navigation?.queue?.length ?? 0,
+        }
+        refs.lastSpawnZoneReport = zoneReport
+        useGame.setState({ spawnZoneReport: zoneReport })
+        if (outcome.selected) {
+          p = outcome.selected.player
+          bp = outcome.selected.bot
+          audit = outcome.selected.audit
+          lastZonePair.current = {
+            playerZone: outcome.selected.playerZone,
+            botZone: outcome.selected.botZone,
+          }
+        } else {
+          audit = outcome.pending || {
+            ok: false, status: 'invalid', score: 0,
+            reasons: [zones.length < 2
+              ? '이동 가능한 스폰 구역이 아직 충분히 생성되지 않음'
+              : '검증된 스폰 구역 사이에서 공정한 위치 조합을 찾지 못함',
+            ...outcome.rejectionCounts.map(([reason, count]) => `${reason} (거절 ${count}회)`)].slice(0, 7),
+          }
+          refs.lastSpawnAudit = audit
+          useGame.setState({ spawnAudit: audit })
+          useGame.getState().setSpawnEditorOpen(true)
+          refs.safePlayerSpawn = basePlayer
+          refs.safeBotSpawn = baseBot
+          return false
+        }
+      } else {
+        // The V5/arena/fixed-mode compatibility path remains available for
+        // regression comparison. It does not claim full zone verification.
+        refs.lastSpawnZoneReport = {
+          engine: 'v5', zones: 0, graphZones: 0, checked: 0, rejected: [],
+          selected: null, reason: SPAWN_ENGINE_V5 ? '사용자가 V5 호환 모드 선택' :
+            ACTIVE_MAP.key === 'arena' ? '내장 아레나는 기존 소형 맵 스폰 적용' :
+            '랜덤 구역 모드 비활성화',
+        }
+        useGame.setState({ spawnZoneReport: refs.lastSpawnZoneReport })
       if (!TRAINING) {
         // Evaluate PAIRS together, not one independently selected point at a time.
         // Old sky/roof fallback is deliberately absent. Unscanned NavGraph areas
@@ -354,6 +438,7 @@ export default function Match() {
           refs.safeBotSpawn = baseBot
           return false
         }
+      }
       }
       if (!p || (!TRAINING && !bp)) {
         audit = audit || { ok: false, status: 'invalid', score: 0,
@@ -441,6 +526,7 @@ export default function Match() {
       refs.snapSpawn = null
       refs.validateSpawn = null
       refs.randomSafeSpawn = null
+      refs.getSpawnZones = null
       refs.inspectSpawnPair = null
     }
   }, [camera, findSafeSpawn])
