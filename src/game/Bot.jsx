@@ -505,6 +505,7 @@ export default function Bot() {
     const v = { x: tmp.lastVX, y: tmp.lastVY, z: tmp.lastVZ }
     let dirx = 0, dirz = 0, spd = 0, hop = false
     let navigationGoal = null
+    let navGuided = false
 
     if (active && pp) {
       const ex = p.x, ey = p.y + 0.7, ez = p.z
@@ -593,7 +594,7 @@ export default function Bot() {
 
       // Keep the same tactical state and weapon logic; replace only the
       // movement direction when a collision-derived route is available.
-      if (navigationGoal && spd > 0) {
+      if (navigationGoal && spd > 0 && t >= st.unstuckUntil) {
         const waypoint = nextNavWaypoint(p, navigationGoal, t)
         if (waypoint) {
           const nx = waypoint.x - p.x, nz = waypoint.z - p.z
@@ -601,6 +602,7 @@ export default function Bot() {
           if (length > 0.05) {
             dirx = nx / length
             dirz = nz / length
+            navGuided = true
           }
         }
       } else if (st.los) {
@@ -609,7 +611,7 @@ export default function Bot() {
       }
 
       // ── 낮은 장애물 점프 / 벽 회피 / 끼임 탈출 ──
-      if (spd > 0) {
+      if (spd > 0 && !navGuided) {
         if (t > st.nextHop && Math.abs(v.y) < 0.15) {
           const low = probe(p.x, p.y - 0.32, p.z, dirx, dirz, 1.0)
           const upper = probe(p.x, p.y + 0.72, p.z, dirx, dirz, 1.15)
@@ -622,7 +624,7 @@ export default function Bot() {
             const floor = world.castRayAndGetNormal(ray, 2.4, true, undefined, undefined, undefined, undefined, tmp.notBot)
             if (floor && floor.normal.y > 0.72) {
               const centerY = ray.origin.y - floor.timeOfImpact + CFG.capsuleHalfHeight + CFG.capsuleRadius
-              if (validStepHeight(centerY - p.y)) {
+              if (validStepHeight(centerY - p.y) && centerY - p.y > 0.42) {
                 const ground = world.castRay(
                   new rapier.Ray({ x: p.x, y: p.y, z: p.z }, { x: 0, y: -1, z: 0 }),
                   0.97, true, undefined, undefined, undefined, undefined, tmp.notBot,
@@ -665,6 +667,19 @@ export default function Bot() {
           }
           st.stuckAt = t; st.stuckX = p.x; st.stuckZ = p.z
         }
+      }
+
+      // Route-following gets its own progress guard; otherwise old wall-steering
+      // could rotate a perfectly valid A* waypoint into the obstacle again.
+      if (spd > 0 && navGuided && t - st.stuckAt > 1.4) {
+        if (Math.hypot(p.x - st.stuckX, p.z - st.stuckZ) < 0.28) {
+          const a = rand(0, Math.PI * 2)
+          st.navPath = []
+          st.navRepath = t + 0.9
+          st.ux = Math.cos(a); st.uz = Math.sin(a)
+          st.unstuckUntil = t + 0.8
+        }
+        st.stuckAt = t; st.stuckX = p.x; st.stuckZ = p.z
       }
 
       // ── 사격 · 탄창 · 재장전 (플레이어와 같은 총기 데이터 사용) ──
