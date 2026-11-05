@@ -6,6 +6,8 @@ export const LEGACY_MOVEMENT = params.get('movement') === 'legacy'
 // Rollback switches if graph building or the kinematic AI regress on a specific GLB.
 export const LEGACY_BOT = params.get('aiMovement') === 'legacy'
 export const NAV_DISABLED = params.get('nav') === 'off'
+// Diagnostic fallback: keep AI navigation but compare spawning without graph proof.
+export const SPAWN_NAV_DISABLED = params.get('spawnNav') === 'off'
 // 라운드 사이에만 안전한 근접 스폰을 무작위 선택. 1:1 경기 중 즉시 부활은 하지 않음.
 export const DYNAMIC_SPAWNS = params.get('spawnMode') !== 'fixed'
 const levelParam = Number(params.get('level'))
