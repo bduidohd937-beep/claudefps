@@ -114,7 +114,9 @@ export default function SpawnEditor() {
   const randomOne = (kind) => {
     const safe = refs.randomSafeSpawn?.(kind)
     if (!safe) {
-      setMessage(label(kind) + '의 안전한 랜덤 후보를 찾지 못했어. 이 맵의 F6 기준 스폰을 먼저 정상 지면에 저장해 줘.')
+      setMessage(label(kind) + '의 검증된 랜덤 후보가 없어. ' +
+        (refs.lastSpawnAudit?.reasons?.slice(0, 2).join(' / ') ||
+        'NavGraph 스캔이 끝나지 않았거나 주변에 안전한 이동 구역이 부족해.'))
       return
     }
     if (moveOnly(kind, safe)) setMessage(label(kind) + '만 안전 랜덤 위치로 이동했어. 마음에 들면 저장 버튼을 눌러.')
@@ -139,8 +141,10 @@ export default function SpawnEditor() {
     clearSpawnOverrides()
     setPlayer(toFields(SPAWNS.player))
     setBot(toFields(SPAWNS.bot))
-    refs.resetRound?.()
-    setMessage('양쪽 수동 스폰을 초기화하고 자동 스폰을 재탐색했어.')
+    const ok = refs.resetRound?.()
+    setAudit(refs.lastSpawnAudit || null)
+    setMessage(ok ? '양쪽 수동 좌표를 초기화하고 검증된 스폰 조합을 선택했어.' :
+      '초기화했지만 아직 안전한 쌍을 찾지 못했어. 아래 검사 결과를 확인해 줘.')
   }
 
   return (
