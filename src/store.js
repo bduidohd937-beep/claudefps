@@ -34,6 +34,7 @@ export const useGame = create((set, get) => ({
   spawnEditorOpen: false,
   spawnError: null,
   spawnAudit: null,
+  spawnZoneReport: null,
   tunerOpen: false,
   setTunerOpen: (open) => {
     live.tuner = open
@@ -156,7 +157,7 @@ export const useGame = create((set, get) => ({
       money: MATCH.startMoney, lossStreak: 0, botEconomy: initialBotEconomy(),
       spawnProtectionUntil: 0, hp: 100, armor: 0,
       owned: initialOwned(), ammo: initialAmmo(), weapon: 'pistol',
-      matchOver: null, roundBanner: null, spawnError: null, spawnAudit: null,
+      matchOver: null, roundBanner: null, spawnError: null, spawnAudit: null, spawnZoneReport: null,
     })
     get().beginRound()
   },
@@ -342,6 +343,8 @@ export const refs = {
   navigation: null,
   inspectSpawnPair: null,
   lastSpawnAudit: null,
+  getSpawnZones: null,
+  lastSpawnZoneReport: null,
   teleportPlayer: null,
   snapSpawn: null,
   mapBounds: null,
