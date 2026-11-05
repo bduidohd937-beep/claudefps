@@ -312,6 +312,9 @@ export default function Bot() {
         const next = { x: pos[0], y: pos[1], z: pos[2] }
         b.setTranslation(next, true)
         b.setNextKinematicTranslation(next)
+        const nav = refs.navigation
+        if (nav && (!nav.anchor ||
+          Math.hypot(next.x - nav.anchor.x, next.z - nav.anchor.z) > 20)) nav.reset(next)
       }
     }
     refs.teleportBot = (pos) => {
@@ -323,6 +326,10 @@ export default function Bot() {
         const next = { x: pos[0], y: pos[1], z: pos[2] }
         b.setTranslation(next, true)
         b.setNextKinematicTranslation(next)
+        tmp.vertical = 0; tmp.grounded = false
+        tmp.lastVX = 0; tmp.lastVY = 0; tmp.lastVZ = 0
+        st.navGoal = null; st.navPath = []; st.navIndex = 0; st.navRepath = 0
+        refs.navigation?.reset(next)
       }
       return true
     }
