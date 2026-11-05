@@ -9,8 +9,9 @@ export class NavigationRuntime {
     this.actors = actors
     this.ray = new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 })
     this.cell = options.cell ?? 1
-    this.maxNodes = options.maxNodes ?? 3500
+    this.maxNodes = options.maxNodes ?? 9000
     this.radius = options.radius ?? 46
+    this.autoRadius = options.radius == null
     this.graph = new NavGraph(this.cell)
     this.queue = []
     this.expanded = new Set()
@@ -95,13 +96,16 @@ export class NavigationRuntime {
   tick(origin, budget = 5) {
     if (!origin) return
     if (!this.anchor && !this.reset(origin)) return
-    // On very large arenas, re-seed near the actual bot instead of keeping an
-    // exhausted partial graph in a previous round's faraway spawn sector.
-    if (this.graph.nodes.length >= this.maxNodes &&
-        Math.hypot(origin.x - this.anchor.x, origin.z - this.anchor.z) > 24) {
-      this.reset(origin)
-    }
+    // Preserve the verified region across rounds. Re-seeding it from a newly
+    // randomized spawn would erase all validated zone evidence.
     const bounds = this.actors.mapBounds
+    if (bounds && this.autoRadius) {
+      const width = bounds.max[0] - bounds.min[0]
+      const depth = bounds.max[2] - bounds.min[2]
+      // Large Ghost City / FPS maps: expand across the connected walkable region.
+      // Unexplored regions remain unknown, NEVER silently accepted as reachable.
+      this.radius = Math.min(180, Math.max(46, Math.hypot(width, depth) * 0.9))
+    }
     const dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]]
     for (let i = 0; i < budget && this.queue.length && this.graph.nodes.length < this.maxNodes; i++) {
       const id = this.queue.shift()
