@@ -505,6 +505,15 @@ export default function Bot() {
       return
     }
     g.position.set(p.x, p.y - 0.8, p.z)
+    // F6 editor previews need an immovable AI body, regardless of whether the
+    // selected test position is in midair. Never apply simulated gravity here.
+    if (game.spawnEditorOpen) {
+      b.setNextKinematicTranslation({ x: p.x, y: p.y, z: p.z })
+      tmp.vertical = 0; tmp.grounded = false
+      tmp.lastVX = 0; tmp.lastVY = 0; tmp.lastVZ = 0
+      st.speed = 0
+      return
+    }
 
     // 교전 중(포인터락 + live 단계)에만 행동. 일시정지/구매/상점 중에는 정지
     const active = !st.dead && live.phase === 'live' && live.locked && !live.dead && t >= game.spawnProtectionUntil
