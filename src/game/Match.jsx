@@ -68,6 +68,7 @@ export default function Match() {
         refs.mapBounds.max[2] - refs.mapBounds.min[2]) : 20
       return spawnHasEscape(access.supported, access.exits, span > 25 ? 2 : 1)
     }
+    const pointProfiles = new Map()
     // F6 audit and automatic round selection share identical safety checks.
     // Do not claim a NavGraph connection when the target cells are unscanned.
     const inspectPair = (player, bot) => {
@@ -77,6 +78,9 @@ export default function Match() {
       const minDistance = Math.min(CFG.spawnMinDistance, Math.max(2.5, span * 0.33))
       const profile = (point) => {
         if (!point || !point.every(Number.isFinite)) return { valid: false, exits: 0, cover: 0 }
+        const key = point.map((v) => v.toFixed(2)).join(':')
+        const cached = pointProfiles.get(key)
+        if (cached) return cached
         const top = point[1] + 1.0
         const hit = cast([point[0], top, point[2]], [0, -1, 0], 2.5, true)
         if (!hit || hit.normal.y < 0.72) return { valid: false, exits: 0, cover: 0 }
@@ -91,7 +95,10 @@ export default function Match() {
         for (const [dx, dz] of dirs) {
           if (cast([point[0], centerY + 0.3, point[2]], [dx, 0, dz], 4)) cover++
         }
-        return { valid, exits: quality.exits, cover }
+        const result = { valid, exits: quality.exits, cover }
+        if (pointProfiles.size > 800) pointProfiles.clear()
+        pointProfiles.set(key, result)
+        return result
       }
       const a = profile(player), b = profile(bot)
       let lineOfSight = true
@@ -111,9 +118,16 @@ export default function Match() {
         }
       }
       const requireGraph = !NAV_DISABLED && !SPAWN_NAV_DISABLED && ACTIVE_MAP.key !== 'arena'
-      const nav = requireGraph
+      const physicallyValid = evaluateDuelSpawn({
+        player, bot, span, playerExits: a.exits, botExits: b.exits,
+        playerCover: a.cover, botCover: b.cover,
+        playerValid: a.valid, botValid: b.valid,
+        lineOfSight, requireGraph: false, minDistance,
+      }).ok
+      const nav = requireGraph && physicallyValid
         ? graphConnection(refs.navigation, player, bot)
-        : { state: 'disabled', reason: ACTIVE_MAP.key === 'arena'
+        : { state: requireGraph ? 'skipped' : 'disabled', reason: requireGraph
+          ? '다른 물리·거리 검사를 통과하지 못함' : ACTIVE_MAP.key === 'arena'
           ? '내장 아레나에서는 지면·거리 검사를 우선함' :
           SPAWN_NAV_DISABLED ? '스폰 내비게이션 검사만 비활성화됨' : 'AI 내비게이션이 비활성화됨' }
       const result = evaluateDuelSpawn({
