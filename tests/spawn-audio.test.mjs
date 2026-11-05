@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 const { spatialFootstep, FOOTSTEP_GAITS } = await import('../src/game/FootstepMath.js')
-const { exposedAtCloseRange, exposedWithoutCover, spawnScore } = await import('../src/game/SpawnSafety.js')
+const { exposedAtCloseRange, exposedWithoutCover, spawnScore, spawnHasEscape } = await import('../src/game/SpawnSafety.js')
 
 test('AI sprint is louder and faster than walking; stealth investigation is quietest', () => {
   const source = [5, 0, 0], listener = [0, 0, 0], right = [1, 0, 0]

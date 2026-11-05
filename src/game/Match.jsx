@@ -5,7 +5,7 @@ import { CFG, MATCH, SPAWNS, TRAINING, AUTO_ENTER, START_LEVEL, DYNAMIC_SPAWNS, 
 import { live, refs, useGame } from '../store'
 import { enemies } from '../enemies'
 import { cam, on } from '../fx'
-import { exposedAtCloseRange, exposedWithoutCover, spawnScore, spawnHasEscape } from './SpawnSafety.js'
+import { exposedAtCloseRange, exposedWithoutCover, spawnScore, spawnHasEscape, fairSpawnPair } from './SpawnSafety.js'
 
 // 라운드 진행 로직: 라운드 리셋, 구매 타이머, 승패 판정, 킬 보상, 스폰 저장 단축키
 export default function Match() {
@@ -60,6 +60,12 @@ export default function Match() {
       return { supported, exits }
     }
 
+    const qualityOk = (x, y, z) => {
+      const access = spawnQuality(x, y, z)
+      const span = refs.mapBounds ? Math.min(refs.mapBounds.max[0] - refs.mapBounds.min[0],
+        refs.mapBounds.max[2] - refs.mapBounds.min[2]) : 20
+      return spawnHasEscape(access.supported, access.exits, span > 25 ? 2 : 1)
+    }
     const resolve = (requested, avoid = null, maxRing = 8, minimumDistance = CFG.spawnMinDistance) => {
       // 요청한 좌표가 허공이면 맵 실제 영역 중앙에서도 바닥을 검색.
       const bounds = refs.mapBounds
@@ -80,7 +86,7 @@ export default function Match() {
           const floor = cast([x, top, z], [0, -1, 0], depth, true)
           if (!floor || floor.normal.y < 0.72) continue
           const groundY = top - floor.timeOfImpact
-          if (hasClearance(x, groundY, z)) {
+          if (hasClearance(x, groundY, z) && qualityOk(x, groundY, z)) {
             return [x, groundY + CFG.capsuleHalfHeight + CFG.capsuleRadius + 0.05, z]
           }
         }
@@ -99,60 +105,83 @@ export default function Match() {
       if (!floor || floor.normal.y < 0.72) return null
       const floorY = top - floor.timeOfImpact
       const y = floorY + CFG.capsuleHalfHeight + CFG.capsuleRadius + 0.05
-      if (Math.abs(y - point[1]) > 1.5 || !hasClearance(point[0], floorY, point[2])) return null
+      if (Math.abs(y - point[1]) > 1.5 || !hasClearance(point[0], floorY, point[2]) ||
+        !qualityOk(point[0], floorY, point[2])) return null
       return [point[0], y, point[2]]
     }
 
-    // 기존에 찾은 안전 스폰 주변의 같은 높이 지면만 후보로 삼는다.
-    // 넓은 맵 전체를 무작위로 찍으면 지붕/허공/단절된 구역에 나타날 수 있어 금지.
+    // Collect collision-valid same-level locations once per anchor. Reuse the
+    // validated pool between rounds rather than casting thousands of rays each time.
+    const groundPools = new Map()
     resolve.randomNear = (base, avoid, previous, radius, minimumDistance) => {
       if (!base) return null
-      const valid = []
-      for (let i = 0; i < 96; i++) {
-        const angle = Math.random() * Math.PI * 2
-        const distance = radius * (0.35 + Math.random() * 0.65)
-        const x = base[0] + Math.cos(angle) * distance
-        const z = base[2] + Math.sin(angle) * distance
-        if (avoid && Math.hypot(x - avoid[0], z - avoid[2]) < minimumDistance) continue
-        if (previous && Math.hypot(x - previous[0], z - previous[2]) < Math.min(2.5, radius * 0.4)) continue
-        const top = base[1] + 2.5
-        const hit = cast([x, top, z], [0, -1, 0], 6, true)
-        if (!hit || hit.normal.y < 0.72) continue
-        const floorY = top - hit.timeOfImpact
-        const centerY = floorY + CFG.capsuleHalfHeight + CFG.capsuleRadius + 0.05
-        // 다른 층이나 지붕은 다른 네비게이션 영역일 수 있으므로 제외.
-        if (Math.abs(centerY - base[1]) > 2.0) continue
-        if (!hasClearance(x, floorY, z)) continue
-        const access = spawnQuality(x, floorY, z)
-        if (!spawnHasEscape(access.supported, access.exits)) continue
-        // Prefer a different part of the playable floor, without instant line-of-sight spawn fights.
-        const recentDistance = previous ? Math.hypot(x - previous[0], z - previous[2]) : radius
-        const opponentDistance = avoid ? Math.hypot(x - avoid[0], z - avoid[2]) : minimumDistance * 2
-        const from = [x, centerY + 0.5, z]
-        const dx = avoid ? avoid[0] - x : 0
-        const dy = avoid ? avoid[1] - centerY : 0
-        const dz = avoid ? avoid[2] - z : 0
-        const distanceToOpponent = Math.hypot(dx, dy, dz)
-        const blocked = avoid && distanceToOpponent > 0.5 && cast(from,
-          [dx / distanceToOpponent, dy / distanceToOpponent, dz / distanceToOpponent],
-          Math.max(0, distanceToOpponent - 0.45))
-        if (avoid && exposedAtCloseRange(distanceToOpponent, !!blocked)) continue
+      const key = base.map((n) => n.toFixed(1)).join(':') + ':' + radius.toFixed(1)
+      let pool = groundPools.get(key)
+      if (!pool) {
+        pool = []
         const span = refs.mapBounds ? Math.min(
           refs.mapBounds.max[0] - refs.mapBounds.min[0],
           refs.mapBounds.max[2] - refs.mapBounds.min[2],
         ) : 20
-        const coverDirections = [[1, 0], [-1, 0], [0, 1], [0, -1]]
-        const cover = !!avoid && coverDirections.some(([cx, cz]) =>
-          !!cast([x, centerY + 0.4, z], [cx, 0, cz], 5.5))
+        for (let i = 0; i < 128; i++) {
+          const angle = Math.random() * Math.PI * 2
+          const distance = radius * (0.32 + Math.random() * 0.68)
+          const x = base[0] + Math.cos(angle) * distance
+          const z = base[2] + Math.sin(angle) * distance
+          const top = base[1] + 2.5
+          const floor = cast([x, top, z], [0, -1, 0], 6, true)
+          if (!floor || floor.normal.y < 0.72) continue
+          const groundY = top - floor.timeOfImpact
+          const centerY = groundY + CFG.capsuleHalfHeight + CFG.capsuleRadius + 0.05
+          if (Math.abs(centerY - base[1]) > 1.75 || !hasClearance(x, groundY, z)) continue
+          const access = spawnQuality(x, groundY, z)
+          if (!spawnHasEscape(access.supported, access.exits, span > 25 ? 2 : 1)) continue
+          pool.push({ pos: [x, centerY, z], exits: access.exits })
+        }
+        groundPools.set(key, pool)
+      }
+      const span = refs.mapBounds ? Math.min(
+        refs.mapBounds.max[0] - refs.mapBounds.min[0],
+        refs.mapBounds.max[2] - refs.mapBounds.min[2],
+      ) : 20
+      const valid = []
+      for (const candidate of pool) {
+        const [x, centerY, z] = candidate.pos
+        const opponentDistance = avoid ? Math.hypot(x - avoid[0], centerY - avoid[1], z - avoid[2]) : radius
+        if (avoid && opponentDistance < minimumDistance) continue
+        const recentDistance = previous ? Math.hypot(x - previous[0], z - previous[2]) : radius
+        if (previous && recentDistance < Math.min(2.5, radius * 0.4)) continue
+        let blocked = false
+        if (avoid && opponentDistance > 0.5) {
+          const dx = avoid[0] - x, dy = avoid[1] - centerY, dz = avoid[2] - z
+          blocked = !!cast([x, centerY + 0.45, z],
+            [dx / opponentDistance, dy / opponentDistance, dz / opponentDistance],
+            Math.max(0, opponentDistance - 0.6))
+          if (exposedAtCloseRange(opponentDistance, blocked)) continue
+        }
+        // The actual line of sight toward the opponent matters more than any
+        // nearby wall that merely sits behind the spawn point.
+        if (avoid && span > 25 && opponentDistance < 40 && !blocked) continue
+        const cover = !!avoid && blocked
         if (avoid && exposedWithoutCover(opponentDistance, span, cover)) continue
         const score = spawnScore(recentDistance, opponentDistance, radius,
-          Math.random() * 2, (cover ? 5 : 0) + Math.min(access.exits, 5) * 0.55)
-        valid.push({ pos: [x, centerY, z], score })
+          Math.random() * 2, (cover ? 6 : 0) + Math.min(candidate.exits, 5) * 0.55)
+        valid.push({ pos: candidate.pos, score })
       }
       valid.sort((a, b) => b.score - a.score)
-      return valid.length ? valid[Math.floor(Math.random() * Math.min(valid.length, 5))].pos : null
+      return valid.length ? valid[Math.floor(Math.random() * Math.min(valid.length, 7))].pos : null
     }
-    return resolve
+    resolve.fairPair = (player, bot, mapSpan, minimumDistance) => {
+      if (!player || !bot) return false
+      const dx = bot[0] - player[0], dy = bot[1] - player[1], dz = bot[2] - player[2]
+      const distance = Math.hypot(dx, dy, dz)
+      if (distance < 0.01) return false
+      const direction = [dx / distance, dy / distance, dz / distance]
+      const blocked = !!cast([player[0], player[1] + 0.45, player[2]],
+        direction, Math.max(0, distance - 0.6))
+      return fairSpawnPair({ distance, blocked, mapSpan, minDistance: minimumDistance })
+    }
+        return resolve
   }, [world, rapier])
 
   useEffect(() => {
@@ -194,22 +223,40 @@ export default function Match() {
       let p = basePlayer
       let bp = baseBot
 
-      // 고정 스폰은 언제든 로비의 옵션에서 선택할 수 있음.
-      // F6 수동 스폰은 매번 새로 검색할 중심점으로 유지됨.
+      // Keep both team spawns on checked walkable floors. Never fall back to a
+      // roof-top or arbitrary sky position when no safe starting pair exists.
       if (DYNAMIC_SPAWNS && !TRAINING && p && bp) {
-        const shuffledPlayer = findSafeSpawn.randomNear(
-          p, bp, lastSpawns.current.player, radius, minimumDistance,
-        )
-        if (shuffledPlayer) p = shuffledPlayer
-        const shuffledBot = findSafeSpawn.randomNear(
-          bp, p, lastSpawns.current.bot, radius, minimumDistance,
-        )
-        if (shuffledBot) bp = shuffledBot
+        let chosen = null
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const candidatePlayer = findSafeSpawn.randomNear(
+            basePlayer, baseBot, lastSpawns.current.player, radius, minimumDistance,
+          ) || basePlayer
+          const candidateBot = findSafeSpawn.randomNear(
+            baseBot, candidatePlayer, lastSpawns.current.bot, radius, minimumDistance,
+          ) || baseBot
+          if (findSafeSpawn.fairPair(candidatePlayer, candidateBot, span, minimumDistance)) {
+            chosen = [candidatePlayer, candidateBot]
+            break
+          }
+        }
+        if (chosen) [p, bp] = chosen
       }
-      const playerSpawn = p || (bounds
-        ? [bounds.center[0], bounds.max[1] + 4, bounds.center[2]]
-        : [...SPAWNS.player])
-      const botSpawn = bp || [...SPAWNS.bot]
+      if (!TRAINING && !findSafeSpawn.fairPair(p, bp, span, minimumDistance)) {
+        console.warn('[spawn] No fair playable pair. Open F6 and calibrate both spawn points.')
+        useGame.getState().setSpawnEditorOpen(true)
+        refs.safePlayerSpawn = basePlayer
+        refs.safeBotSpawn = baseBot
+        return false
+      }
+      if (!p || (!TRAINING && !bp)) {
+        console.warn('[spawn] No valid floor/capsule clearance. Open F6 to calibrate spawns.')
+        useGame.getState().setSpawnEditorOpen(true)
+        refs.safePlayerSpawn = basePlayer
+        refs.safeBotSpawn = baseBot
+        return false
+      }
+      const playerSpawn = p
+      const botSpawn = bp
       if (p && bp) {
         lastSpawns.current = { player: [...p], bot: [...bp] }
       }
@@ -219,7 +266,7 @@ export default function Match() {
           bot: bp.map((x) => Number(x.toFixed(2))),
         })
       }
-      if (!p || (!TRAINING && !bp)) useGame.getState().setSpawnEditorOpen(true)
+      refs.resetPlayerMotion?.()
       refs.safePlayerSpawn = p
       refs.safeBotSpawn = bp
       if (p && p.some((value, i) => Math.abs(value - SPAWNS.player[i]) > 0.1)) {
@@ -231,6 +278,9 @@ export default function Match() {
       const rb = refs.playerBody
       if (rb) {
         rb.setTranslation({ x: playerSpawn[0], y: playerSpawn[1], z: playerSpawn[2] }, true)
+        if (typeof rb.isKinematic === 'function' && rb.isKinematic()) {
+          rb.setNextKinematicTranslation({ x: playerSpawn[0], y: playerSpawn[1], z: playerSpawn[2] })
+        }
         rb.setLinvel({ x: 0, y: 0, z: 0 }, true)
       }
       camera.position.set(playerSpawn[0], playerSpawn[1] + 0.75, playerSpawn[2])
@@ -247,6 +297,7 @@ export default function Match() {
       cam.recoil = 0; cam.shake = 0; cam.flinchP = 0; cam.flinchY = 0
       live.fireSpread = 0
       refs.resetBot?.(botSpawn)
+      return true
     }
 
     // 개발용: F4 = 지금 위치를 플레이어 스폰으로 저장 / F3 = 봇 스폰으로 저장 (맵별로 기억됨)

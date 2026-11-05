@@ -16,3 +16,12 @@ export function spawnHasEscape(stableFloorSamples, traversableExits, minExits = 
   return Number.isFinite(stableFloorSamples) && stableFloorSamples >= 4 &&
     Number.isFinite(traversableExits) && traversableExits >= minExits
 }
+
+// A duel must not begin at a point-blank exposed pair of positions.
+// Small test maps receive a shorter separation requirement.
+export function fairSpawnPair({distance, blocked, mapSpan, minDistance = 3}) {
+  if (!Number.isFinite(distance) || distance < minDistance) return false
+  if (mapSpan > 25 && distance < 26 && !blocked) return false
+  if (mapSpan > 25 && distance < 40 && !blocked) return false
+  return true
+}
