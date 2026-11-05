@@ -418,6 +418,7 @@ function MatchEnd() {
 }
 
 export default function HUD() {
+  const navDebug = useGame((s) => s.navDebug)
   const locked = useGame((s) => s.locked)
   const phase = useGame((s) => s.phase)
   const shopOpen = useGame((s) => s.shopOpen)
@@ -428,7 +429,10 @@ export default function HUD() {
   useEffect(() => {
     const kd = (e) => {
       if (e.repeat) return
-      if (e.code === 'F6') {
+      if (e.code === 'F7') {
+        e.preventDefault()
+        useGame.getState().toggleNavDebug()
+      } else if (e.code === 'F6') {
         e.preventDefault()
         const st = useGame.getState()
         st.setSpawnEditorOpen(!st.spawnEditorOpen)
@@ -452,6 +456,12 @@ export default function HUD() {
       <Killfeed />
       {playing && <Vitals />}
       {playing && <Ammo />}
+      {navDebug && <div style={{ position: 'fixed', top: 100, left: 15, zIndex: 60,
+        background: 'rgba(5,18,22,.82)', color: '#a4ffe2', border: '1px solid #4ebc92',
+        borderRadius: 5, padding: '8px 12px', pointerEvents: 'none',
+        font: '12px monospace' }}>
+        F7: AI NAV DEBUG | GREEN=walkable links | ORANGE=planned route
+      </div>}
       <Scoreboard />
       <SpawnReady />
       <RoundBanner />
