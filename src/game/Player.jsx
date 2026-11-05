@@ -7,7 +7,7 @@ import { live, refs, useGame } from '../store'
 import { camBegin, camEnd, emit } from '../fx'
 import { play } from '../audio'
 import { useKeys } from './useKeys'
-import { isNewJump } from './MovementRules.js'
+import { isNewJump, NATIVE_CONTROLLER } from './MovementRules.js'
 import LegacyPlayer from './LegacyPlayer'
 
 // Rapier's native character controller handles stair autostep, ramp collision,
@@ -19,11 +19,11 @@ function KinematicPlayer() {
   const camera = useThree((s) => s.camera)
   const { world } = useRapier()
   const ctrl = useMemo(() => {
-    const c = world.createCharacterController(0.02)
-    c.enableAutostep(0.38, 0.18, false)
-    c.enableSnapToGround(0.27)
-    c.setMaxSlopeClimbAngle(Math.PI * 50 / 180)
-    c.setMinSlopeSlideAngle(Math.PI * 56 / 180)
+    const c = world.createCharacterController(NATIVE_CONTROLLER.offset)
+    c.enableAutostep(NATIVE_CONTROLLER.stepHeight, NATIVE_CONTROLLER.minimumStepWidth, false)
+    c.enableSnapToGround(NATIVE_CONTROLLER.groundSnap)
+    c.setMaxSlopeClimbAngle(Math.PI * NATIVE_CONTROLLER.climbSlopeDegrees / 180)
+    c.setMinSlopeSlideAngle(Math.PI * NATIVE_CONTROLLER.slideSlopeDegrees / 180)
     return c
   }, [world])
   useEffect(() => () => {
