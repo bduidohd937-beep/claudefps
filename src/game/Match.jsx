@@ -295,6 +295,30 @@ export default function Match() {
       if (!anchor) return null
       const avoid = other ? [other.x, other.y, other.z] : null
       const previous = ownNow ? [ownNow.x, ownNow.y, ownNow.z] : null
+      const useV6 = DYNAMIC_SPAWNS && !SPAWN_ENGINE_V5 && !NAV_DISABLED &&
+        !SPAWN_NAV_DISABLED && ACTIVE_MAP.key !== 'arena'
+      if (useV6) {
+        if (!avoid) return null
+        const zones = getZones(refs.safePlayerSpawn || SPAWNS.player,
+          refs.safeBotSpawn || SPAWNS.bot)
+        const candidates = zones.filter((zone) => zone.kind === 'graph')
+          .flatMap((zone) => zone.samples.slice(0, 2)
+            .map((pos) => ({ zone, pos })))
+          .sort((a, b) => {
+            const ad = previous ? Math.hypot(a.pos[0] - previous[0],
+              a.pos[2] - previous[2]) : 0
+            const bd = previous ? Math.hypot(b.pos[0] - previous[0],
+              b.pos[2] - previous[2]) : 0
+            return bd - ad
+          })
+        for (const item of candidates.slice(0, 36)) {
+          const audit = kind === 'player'
+            ? findSafeSpawn.inspectPair(item.pos, avoid)
+            : findSafeSpawn.inspectPair(avoid, item.pos)
+          if (audit.ok) return item.pos
+        }
+        return null
+      }
       const options = findSafeSpawn.randomNear(anchor, avoid, previous,
         radius, Math.min(8, Math.max(3, span * 0.25)), true)
       for (const p of options) {
