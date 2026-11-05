@@ -5,7 +5,7 @@ import { CFG, MATCH, SPAWNS, TRAINING, AUTO_ENTER, START_LEVEL, DYNAMIC_SPAWNS, 
 import { live, refs, useGame } from '../store'
 import { enemies } from '../enemies'
 import { cam, on } from '../fx'
-import { exposedAtCloseRange, exposedWithoutCover, spawnScore, spawnHasEscape } from './SpawnSafety.js'
+import { exposedAtCloseRange, exposedWithoutCover, spawnScore, spawnHasEscape, fairSpawnPair } from './SpawnSafety.js'
 
 // 라운드 진행 로직: 라운드 리셋, 구매 타이머, 승패 판정, 킬 보상, 스폰 저장 단축키
 export default function Match() {
@@ -60,6 +60,12 @@ export default function Match() {
       return { supported, exits }
     }
 
+    const qualityOk = (x, y, z) => {
+      const access = spawnQuality(x, y, z)
+      const span = refs.mapBounds ? Math.min(refs.mapBounds.max[0] - refs.mapBounds.min[0],
+        refs.mapBounds.max[2] - refs.mapBounds.min[2]) : 20
+      return spawnHasEscape(access.supported, access.exits, span > 25 ? 2 : 1)
+    }
     const resolve = (requested, avoid = null, maxRing = 8, minimumDistance = CFG.spawnMinDistance) => {
       // 요청한 좌표가 허공이면 맵 실제 영역 중앙에서도 바닥을 검색.
       const bounds = refs.mapBounds
@@ -80,7 +86,7 @@ export default function Match() {
           const floor = cast([x, top, z], [0, -1, 0], depth, true)
           if (!floor || floor.normal.y < 0.72) continue
           const groundY = top - floor.timeOfImpact
-          if (hasClearance(x, groundY, z)) {
+          if (hasClearance(x, groundY, z) && qualityOk(x, groundY, z)) {
             return [x, groundY + CFG.capsuleHalfHeight + CFG.capsuleRadius + 0.05, z]
           }
         }
@@ -99,7 +105,8 @@ export default function Match() {
       if (!floor || floor.normal.y < 0.72) return null
       const floorY = top - floor.timeOfImpact
       const y = floorY + CFG.capsuleHalfHeight + CFG.capsuleRadius + 0.05
-      if (Math.abs(y - point[1]) > 1.5 || !hasClearance(point[0], floorY, point[2])) return null
+      if (Math.abs(y - point[1]) > 1.5 || !hasClearance(point[0], floorY, point[2]) ||
+        !qualityOk(point[0], floorY, point[2])) return null
       return [point[0], y, point[2]]
     }
 
@@ -123,8 +130,12 @@ export default function Match() {
         // 다른 층이나 지붕은 다른 네비게이션 영역일 수 있으므로 제외.
         if (Math.abs(centerY - base[1]) > 2.0) continue
         if (!hasClearance(x, floorY, z)) continue
+        const span = refs.mapBounds ? Math.min(
+          refs.mapBounds.max[0] - refs.mapBounds.min[0],
+          refs.mapBounds.max[2] - refs.mapBounds.min[2],
+        ) : 20
         const access = spawnQuality(x, floorY, z)
-        if (!spawnHasEscape(access.supported, access.exits)) continue
+        if (!spawnHasEscape(access.supported, access.exits, span > 25 ? 2 : 1)) continue
         // Prefer a different part of the playable floor, without instant line-of-sight spawn fights.
         const recentDistance = previous ? Math.hypot(x - previous[0], z - previous[2]) : radius
         const opponentDistance = avoid ? Math.hypot(x - avoid[0], z - avoid[2]) : minimumDistance * 2
@@ -137,10 +148,6 @@ export default function Match() {
           [dx / distanceToOpponent, dy / distanceToOpponent, dz / distanceToOpponent],
           Math.max(0, distanceToOpponent - 0.45))
         if (avoid && exposedAtCloseRange(distanceToOpponent, !!blocked)) continue
-        const span = refs.mapBounds ? Math.min(
-          refs.mapBounds.max[0] - refs.mapBounds.min[0],
-          refs.mapBounds.max[2] - refs.mapBounds.min[2],
-        ) : 20
         const coverDirections = [[1, 0], [-1, 0], [0, 1], [0, -1]]
         const cover = !!avoid && coverDirections.some(([cx, cz]) =>
           !!cast([x, centerY + 0.4, z], [cx, 0, cz], 5.5))
