@@ -138,8 +138,9 @@ export default function Match() {
           const x = center[0] + Math.cos(angle) * ring * 2
           const z = center[2] + Math.sin(angle) * ring * 2
           if (avoid && Math.hypot(x - avoid[0], z - avoid[2]) < minimumDistance) continue
-          const top = Math.max(center[1] + 10, CFG.spawnProbeTop, (bounds?.max[1] ?? 0) + 10)
-          const depth = Math.max(CFG.spawnProbeDepth, top - (bounds?.min[1] ?? -20) + 20)
+          // Probe near the requested playable elevation first: global high casts often hit rooftops.
+          const top = center[1] + 2.5
+          const depth = Math.max(14, top - (bounds?.min[1] ?? -20) + 5)
           const floor = cast([x, top, z], [0, -1, 0], depth, true)
           if (!floor || floor.normal.y < 0.72) continue
           const groundY = top - floor.timeOfImpact
@@ -170,8 +171,8 @@ export default function Match() {
     // Collect collision-valid same-level locations once per anchor. Reuse the
     // validated pool between rounds rather than casting thousands of rays each time.
     const groundPools = new Map()
-    resolve.randomNear = (base, avoid, previous, radius, minimumDistance) => {
-      if (!base) return null
+    resolve.randomNear = (base, avoid, previous, radius, minimumDistance, collect = false) => {
+      if (!base) return collect ? [] : null
       const key = base.map((n) => n.toFixed(1)).join(':') + ':' + radius.toFixed(1)
       let pool = groundPools.get(key)
       if (!pool) {
@@ -226,6 +227,7 @@ export default function Match() {
         valid.push({ pos: candidate.pos, score })
       }
       valid.sort((a, b) => b.score - a.score)
+      if (collect) return valid.slice(0, 10).map((entry) => entry.pos)
       return valid.length ? valid[Math.floor(Math.random() * Math.min(valid.length, 7))].pos : null
     }
     resolve.inspectPair = inspectPair
@@ -235,6 +237,7 @@ export default function Match() {
   useEffect(() => {
     // 라운드 시작 시 플레이어/봇 위치 초기화 + 서로 마주보게 설정
     refs.snapSpawn = (pos) => findSafeSpawn(pos, null, 1)
+    refs.inspectSpawnPair = (player, bot) => findSafeSpawn.inspectPair(player, bot)
     refs.validateSpawn = (kind, point) => {
       const opposite = kind === 'player' ? refs.botBody : refs.playerBody
       const at = opposite?.translation()
@@ -253,7 +256,15 @@ export default function Match() {
       if (!anchor) return null
       const avoid = other ? [other.x, other.y, other.z] : null
       const previous = ownNow ? [ownNow.x, ownNow.y, ownNow.z] : null
-      return findSafeSpawn.randomNear(anchor, avoid, previous, radius, Math.min(8, Math.max(3, span * 0.25)))
+      const options = findSafeSpawn.randomNear(anchor, avoid, previous,
+        radius, Math.min(8, Math.max(3, span * 0.25)), true)
+      for (const p of options) {
+        const report = kind === 'player'
+          ? findSafeSpawn.inspectPair(p, avoid)
+          : findSafeSpawn.inspectPair(avoid, p)
+        if (report.ok) return p
+      }
+      return null
     }
     refs.resetRound = () => {
       const bounds = refs.mapBounds
@@ -270,39 +281,66 @@ export default function Match() {
         : findSafeSpawn(SPAWNS.bot, basePlayer, 8, minimumDistance)
       let p = basePlayer
       let bp = baseBot
-
-      // Keep both team spawns on checked walkable floors. Never fall back to a
-      // roof-top or arbitrary sky position when no safe starting pair exists.
-      if (DYNAMIC_SPAWNS && !TRAINING && p && bp) {
-        let chosen = null
-        for (let attempt = 0; attempt < 3; attempt++) {
-          const candidatePlayer = findSafeSpawn.randomNear(
-            basePlayer, baseBot, lastSpawns.current.player, radius, minimumDistance,
-          ) || basePlayer
-          const candidateBot = findSafeSpawn.randomNear(
-            baseBot, candidatePlayer, lastSpawns.current.bot, radius, minimumDistance,
-          ) || baseBot
-          if (findSafeSpawn.fairPair(candidatePlayer, candidateBot, span, minimumDistance)) {
-            chosen = [candidatePlayer, candidateBot]
-            break
+      let audit = null
+      if (!TRAINING) {
+        // Evaluate PAIRS together, not one independently selected point at a time.
+        // Old sky/roof fallback is deliberately absent. Unscanned NavGraph areas
+        // remain pending, never assumed connected.
+        const players = basePlayer ? [basePlayer] : []
+        const bots = baseBot ? [baseBot] : []
+        if (DYNAMIC_SPAWNS && basePlayer && baseBot) {
+          players.push(...findSafeSpawn.randomNear(basePlayer, baseBot,
+            lastSpawns.current.player, radius, minimumDistance, true).slice(0, 6))
+          bots.push(...findSafeSpawn.randomNear(baseBot, basePlayer,
+            lastSpawns.current.bot, radius, minimumDistance, true).slice(0, 6))
+        }
+        let best = null
+        let pending = null
+        let rejected = null
+        for (const candidatePlayer of players) {
+          for (const candidateBot of bots) {
+            const result = findSafeSpawn.inspectPair(candidatePlayer, candidateBot)
+            if (result.status === 'pending' && !pending) pending = result
+            if (!rejected || result.score > rejected.score) rejected = result
+            if (!result.ok) continue
+            const repeats = (lastSpawns.current.player &&
+              Math.hypot(candidatePlayer[0] - lastSpawns.current.player[0],
+                candidatePlayer[2] - lastSpawns.current.player[2]) < 3) ||
+              (lastSpawns.current.bot &&
+                Math.hypot(candidateBot[0] - lastSpawns.current.bot[0],
+                  candidateBot[2] - lastSpawns.current.bot[2]) < 3)
+            const score = result.score - (repeats ? 14 : 0) + Math.random() * 7
+            if (!best || score > best.score) {
+              best = { p: candidatePlayer, bp: candidateBot, audit: result, score }
+            }
           }
         }
-        if (chosen) [p, bp] = chosen
-      }
-      if (!TRAINING && !findSafeSpawn.fairPair(p, bp, span, minimumDistance)) {
-        console.warn('[spawn] No fair playable pair. Open F6 and calibrate both spawn points.')
-        useGame.getState().setSpawnEditorOpen(true)
-        refs.safePlayerSpawn = basePlayer
-        refs.safeBotSpawn = baseBot
-        return false
+        if (best) {
+          p = best.p; bp = best.bp; audit = best.audit
+        } else {
+          audit = pending || rejected || {
+            ok: false, status: 'invalid', score: 0,
+            reasons: ['검증 가능한 두 스폰 후보를 찾지 못함'],
+          }
+          refs.lastSpawnAudit = audit
+          useGame.setState({ spawnAudit: audit })
+          console.warn('[spawn V5] fair pair unavailable', audit.reasons)
+          useGame.getState().setSpawnEditorOpen(true)
+          refs.safePlayerSpawn = basePlayer
+          refs.safeBotSpawn = baseBot
+          return false
+        }
       }
       if (!p || (!TRAINING && !bp)) {
-        console.warn('[spawn] No valid floor/capsule clearance. Open F6 to calibrate spawns.')
+        audit = audit || { ok: false, status: 'invalid', score: 0,
+          reasons: ['유효한 지면을 찾지 못함'] }
+        refs.lastSpawnAudit = audit
+        useGame.setState({ spawnAudit: audit })
         useGame.getState().setSpawnEditorOpen(true)
-        refs.safePlayerSpawn = basePlayer
-        refs.safeBotSpawn = baseBot
         return false
       }
+      refs.lastSpawnAudit = audit
+      useGame.setState({ spawnAudit: audit })
       const playerSpawn = p
       const botSpawn = bp
       if (p && bp) {
@@ -379,6 +417,7 @@ export default function Match() {
       refs.snapSpawn = null
       refs.validateSpawn = null
       refs.randomSafeSpawn = null
+      refs.inspectSpawnPair = null
     }
   }, [camera, findSafeSpawn])
 
