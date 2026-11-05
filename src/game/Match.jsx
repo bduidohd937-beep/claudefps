@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useRapier } from '@react-three/rapier'
-import { CFG, MATCH, SPAWNS, TRAINING, AUTO_ENTER, START_LEVEL, DYNAMIC_SPAWNS, saveSpawn, SPAWN_MANUAL, ACTIVE_MAP, NAV_DISABLED } from '../config'
+import { CFG, MATCH, SPAWNS, TRAINING, AUTO_ENTER, START_LEVEL, DYNAMIC_SPAWNS, saveSpawn, SPAWN_MANUAL, ACTIVE_MAP, NAV_DISABLED, SPAWN_NAV_DISABLED } from '../config'
 import { live, refs, useGame } from '../store'
 import { enemies } from '../enemies'
 import { cam, on } from '../fx'
@@ -110,7 +110,7 @@ export default function Match() {
               [player[0], player[1] + 0.45, player[2]])
         }
       }
-      const requireGraph = !NAV_DISABLED && ACTIVE_MAP.key !== 'arena'
+      const requireGraph = !NAV_DISABLED && !SPAWN_NAV_DISABLED && ACTIVE_MAP.key !== 'arena'
       const nav = requireGraph
         ? graphConnection(refs.navigation, player, bot)
         : { state: 'disabled', reason: ACTIVE_MAP.key === 'arena'
@@ -280,7 +280,7 @@ export default function Match() {
       const baseBot = SPAWN_MANUAL.bot
         ? findSafeSpawn.at(SPAWNS.bot, basePlayer, minimumDistance)
         : findSafeSpawn(SPAWNS.bot, basePlayer, 8, minimumDistance)
-      if (!TRAINING && !NAV_DISABLED && ACTIVE_MAP.key !== 'arena' && baseBot) {
+      if (!TRAINING && !NAV_DISABLED && !SPAWN_NAV_DISABLED && ACTIVE_MAP.key !== 'arena' && baseBot) {
         const nav = refs.navigation
         if (nav && (!nav.anchor ||
           Math.hypot(baseBot[0] - nav.anchor.x, baseBot[2] - nav.anchor.z) > 14 ||
