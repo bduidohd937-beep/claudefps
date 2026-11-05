@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useRapier } from '@react-three/rapier'
-import { CFG, MATCH, SPAWNS, TRAINING, AUTO_ENTER, START_LEVEL, DYNAMIC_SPAWNS, saveSpawn, SPAWN_MANUAL } from '../config'
+import { CFG, MATCH, SPAWNS, TRAINING, AUTO_ENTER, START_LEVEL, DYNAMIC_SPAWNS, saveSpawn, SPAWN_MANUAL, ACTIVE_MAP, NAV_DISABLED } from '../config'
 import { live, refs, useGame } from '../store'
 import { enemies } from '../enemies'
 import { cam, on } from '../fx'
-import { exposedAtCloseRange, exposedWithoutCover, spawnScore, spawnHasEscape, fairSpawnPair } from './SpawnSafety.js'
+import { exposedAtCloseRange, exposedWithoutCover, spawnScore, spawnHasEscape } from './SpawnSafety.js'
+import { graphConnection, evaluateDuelSpawn } from './SpawnV5.js'
 
 // 라운드 진행 로직: 라운드 리셋, 구매 타이머, 승패 판정, 킬 보상, 스폰 저장 단축키
 export default function Match() {
@@ -66,6 +67,62 @@ export default function Match() {
         refs.mapBounds.max[2] - refs.mapBounds.min[2]) : 20
       return spawnHasEscape(access.supported, access.exits, span > 25 ? 2 : 1)
     }
+    // F6 audit and automatic round selection share identical safety checks.
+    // Do not claim a NavGraph connection when the target cells are unscanned.
+    const inspectPair = (player, bot) => {
+      const bounds = refs.mapBounds
+      const span = bounds ? Math.min(bounds.max[0] - bounds.min[0],
+        bounds.max[2] - bounds.min[2]) : 20
+      const minDistance = Math.min(CFG.spawnMinDistance, Math.max(2.5, span * 0.33))
+      const profile = (point) => {
+        if (!point || !point.every(Number.isFinite)) return { valid: false, exits: 0, cover: 0 }
+        const top = point[1] + 1.0
+        const hit = cast([point[0], top, point[2]], [0, -1, 0], 2.5, true)
+        if (!hit || hit.normal.y < 0.72) return { valid: false, exits: 0, cover: 0 }
+        const groundY = top - hit.timeOfImpact
+        const centerY = groundY + CFG.capsuleHalfHeight + CFG.capsuleRadius + 0.05
+        if (Math.abs(centerY - point[1]) > 0.5 ||
+          !hasClearance(point[0], groundY, point[2])) return { valid: false, exits: 0, cover: 0 }
+        const quality = spawnQuality(point[0], groundY, point[2])
+        const valid = spawnHasEscape(quality.supported, quality.exits, span > 25 ? 2 : 1)
+        let cover = 0
+        const dirs = [[1,0],[-1,0],[0,1],[0,-1]]
+        for (const [dx, dz] of dirs) {
+          if (cast([point[0], centerY + 0.3, point[2]], [dx, 0, dz], 4)) cover++
+        }
+        return { valid, exits: quality.exits, cover }
+      }
+      const a = profile(player), b = profile(bot)
+      let lineOfSight = true
+      if (a.valid && b.valid) {
+        const dx = bot[0] - player[0], dy = bot[1] - player[1], dz = bot[2] - player[2]
+        const distance = Math.hypot(dx, dy, dz)
+        if (distance > 0.75) {
+          const clear = (from, to) => {
+            const vx = to[0] - from[0], vy = to[1] - from[1], vz = to[2] - from[2]
+            const len = Math.hypot(vx, vy, vz)
+            return !cast(from, [vx / len, vy / len, vz / len], len - 0.65)
+          }
+          lineOfSight = clear([player[0], player[1] + 0.45, player[2]],
+            [bot[0], bot[1] + 0.45, bot[2]]) ||
+            clear([bot[0], bot[1] + 0.45, bot[2]],
+              [player[0], player[1] + 0.45, player[2]])
+        }
+      }
+      const requireGraph = !NAV_DISABLED && ACTIVE_MAP.key !== 'arena'
+      const nav = requireGraph
+        ? graphConnection(refs.navigation, player, bot)
+        : { state: 'disabled', reason: ACTIVE_MAP.key === 'arena'
+          ? '내장 아레나에서는 지면·거리 검사를 우선함' : '사용자가 내비게이션을 비활성화함' }
+      const result = evaluateDuelSpawn({
+        player, bot, span, playerExits: a.exits, botExits: b.exits,
+        playerCover: a.cover, botCover: b.cover,
+        playerValid: a.valid, botValid: b.valid, lineOfSight,
+        nav, requireGraph, minDistance,
+      })
+      return { ...result, nav, player: a, bot: b }
+    }
+
     const resolve = (requested, avoid = null, maxRing = 8, minimumDistance = CFG.spawnMinDistance) => {
       // 요청한 좌표가 허공이면 맵 실제 영역 중앙에서도 바닥을 검색.
       const bounds = refs.mapBounds
@@ -171,17 +228,8 @@ export default function Match() {
       valid.sort((a, b) => b.score - a.score)
       return valid.length ? valid[Math.floor(Math.random() * Math.min(valid.length, 7))].pos : null
     }
-    resolve.fairPair = (player, bot, mapSpan, minimumDistance) => {
-      if (!player || !bot) return false
-      const dx = bot[0] - player[0], dy = bot[1] - player[1], dz = bot[2] - player[2]
-      const distance = Math.hypot(dx, dy, dz)
-      if (distance < 0.01) return false
-      const direction = [dx / distance, dy / distance, dz / distance]
-      const blocked = !!cast([player[0], player[1] + 0.45, player[2]],
-        direction, Math.max(0, distance - 0.6))
-      return fairSpawnPair({ distance, blocked, mapSpan, minDistance: minimumDistance })
-    }
-        return resolve
+    resolve.inspectPair = inspectPair
+    return resolve
   }, [world, rapier])
 
   useEffect(() => {
