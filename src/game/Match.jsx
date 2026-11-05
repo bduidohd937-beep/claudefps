@@ -159,7 +159,17 @@ export default function Match() {
       valid.sort((a, b) => b.score - a.score)
       return valid.length ? valid[Math.floor(Math.random() * Math.min(valid.length, 5))].pos : null
     }
-    return resolve
+    resolve.fairPair = (player, bot, mapSpan, minimumDistance) => {
+      if (!player || !bot) return false
+      const dx = bot[0] - player[0], dy = bot[1] - player[1], dz = bot[2] - player[2]
+      const distance = Math.hypot(dx, dy, dz)
+      if (distance < 0.01) return false
+      const direction = [dx / distance, dy / distance, dz / distance]
+      const blocked = !!cast([player[0], player[1] + 0.45, player[2]],
+        direction, Math.max(0, distance - 0.6))
+      return fairSpawnPair({ distance, blocked, mapSpan, minDistance: minimumDistance })
+    }
+        return resolve
   }, [world, rapier])
 
   useEffect(() => {
@@ -185,17 +195,7 @@ export default function Match() {
       const previous = ownNow ? [ownNow.x, ownNow.y, ownNow.z] : null
       return findSafeSpawn.randomNear(anchor, avoid, previous, radius, Math.min(8, Math.max(3, span * 0.25)))
     }
-    const fairPair = (player, bot, mapSpan, minimumDistance) => {
-      if (!player || !bot) return false
-      const dx = bot[0] - player[0], dy = bot[1] - player[1], dz = bot[2] - player[2]
-      const distance = Math.hypot(dx, dy, dz)
-      if (distance < 0.01) return false
-      const direction = [dx / distance, dy / distance, dz / distance]
-      const blocked = !!cast([player[0], player[1] + 0.45, player[2]],
-        direction, Math.max(0, distance - 0.6))
-      return fairSpawnPair({ distance, blocked, mapSpan, minDistance: minimumDistance })
-    }
-        refs.resetRound = () => {
+    refs.resetRound = () => {
       const bounds = refs.mapBounds
       const span = bounds
         ? Math.min(bounds.max[0] - bounds.min[0], bounds.max[2] - bounds.min[2])
@@ -222,14 +222,14 @@ export default function Match() {
           const candidateBot = findSafeSpawn.randomNear(
             baseBot, candidatePlayer, lastSpawns.current.bot, radius, minimumDistance,
           ) || baseBot
-          if (fairPair(candidatePlayer, candidateBot, span, minimumDistance)) {
+          if (findSafeSpawn.fairPair(candidatePlayer, candidateBot, span, minimumDistance)) {
             chosen = [candidatePlayer, candidateBot]
             break
           }
         }
         if (chosen) [p, bp] = chosen
       }
-      if (!TRAINING && !fairPair(p, bp, span, minimumDistance)) {
+      if (!TRAINING && !findSafeSpawn.fairPair(p, bp, span, minimumDistance)) {
         console.warn('[spawn] No fair playable pair. Open F6 and calibrate both spawn points.')
         useGame.getState().setSpawnEditorOpen(true)
         refs.safePlayerSpawn = basePlayer
