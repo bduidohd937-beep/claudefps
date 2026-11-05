@@ -13,6 +13,7 @@ export default function Match() {
   const camera = useThree((s) => s.camera)
   const { world, rapier } = useRapier()
   const lastSpawns = useRef({ player: null, bot: null })
+  const nextSpawnRetry = useRef(0)
 
   const findSafeSpawn = useMemo(() => {
     const ray = new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 })
@@ -279,6 +280,14 @@ export default function Match() {
       const baseBot = SPAWN_MANUAL.bot
         ? findSafeSpawn.at(SPAWNS.bot, basePlayer, minimumDistance)
         : findSafeSpawn(SPAWNS.bot, basePlayer, 8, minimumDistance)
+      if (!TRAINING && !NAV_DISABLED && ACTIVE_MAP.key !== 'arena' && baseBot) {
+        const nav = refs.navigation
+        if (nav && (!nav.anchor ||
+          Math.hypot(baseBot[0] - nav.anchor.x, baseBot[2] - nav.anchor.z) > 14 ||
+          Math.abs(baseBot[1] - nav.anchor.y) > 1.3)) {
+          nav.reset({ x: baseBot[0], y: baseBot[1], z: baseBot[2] })
+        }
+      }
       let p = basePlayer
       let bp = baseBot
       let audit = null
@@ -430,6 +439,15 @@ export default function Match() {
         st.startMatch(START_LEVEL)
       }
       return
+    }
+    // The graph is incremental: retry an initially unscanned map after more
+    // walkable cells have been explored. Invalid geometry still requires F6 edits.
+    if (st.spawnError && st.spawnAudit?.status === 'pending' && st.spawnEditorOpen) {
+      const clock = performance.now() / 1000
+      if (clock >= nextSpawnRetry.current) {
+        nextSpawnRetry.current = clock + 2.5
+        st.retrySpawn()
+      }
     }
     if (TRAINING || st.spawnEditorOpen) return
     const now = performance.now() / 1000
