@@ -21,6 +21,18 @@ export function graphConnection(nav, player, bot) {
   }
   const p = match(player), b = match(bot)
   if (!p || !b) return { state: 'unknown', reason: '두 스폰 중 일부 지역의 이동 그래프가 아직 생성되지 않음' }
+  // A node within 1.35m can still be across a narrow wall. Confirm that
+  // each spawn really connects to the snapped graph endpoint, not just its grid cell.
+  const connectorClear = (pos, node) => {
+    const dx = node.x - pos[0], dz = node.z - pos[2]
+    const distance = Math.hypot(dx, dz)
+    return distance < 0.16 || !nav.cast ||
+      !nav.cast(pos[0], pos[1] + 0.24, pos[2],
+        dx / distance, 0, dz / distance, Math.max(0.05, distance - 0.08))
+  }
+  if (!connectorClear(player, p) || !connectorClear(bot, b)) {
+    return { state: 'unknown', reason: '그래프 지점과 스폰 사이에 벽이 있어 연결 검증 불가' }
+  }
   // Graph.route may return a nearby endpoint for an unscanned destination:
   // never accept that without verifying both endpoints first.
   const path = graph.route({ x: p.x, y: p.y, z: p.z }, { x: b.x, y: b.y, z: b.z }, 6000)
@@ -58,7 +70,8 @@ export function evaluateDuelSpawn({
   if (botExits < (wide ? 2 : 1)) reasons.push('AI 스폰에서 이동 가능한 탈출 방향 부족')
   if (requireGraph) {
     if (nav.state !== 'connected') reasons.push(nav.reason || '내비게이션 경로 미확인')
-    if (nav.state === 'connected' && (nav.distance > SPAWN_V5.maxRoute || nav.distance < limit))
+    if (nav.state === 'connected' && (nav.distance > SPAWN_V5.maxRoute || nav.distance < limit ||
+      nav.distance > Math.max(45, d * 2.8)))
       reasons.push('실제 이동 경로가 지나치게 길거나 짧음')
   }
   const score = Math.round(Math.max(0, Math.min(100,
