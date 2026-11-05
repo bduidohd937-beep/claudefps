@@ -84,7 +84,8 @@ export function evaluateDuelSpawn({
   )))
   return {
     ok: reasons.length === 0,
-    status: reasons.length ? (requireGraph && nav.state === 'unknown' ? 'pending' : 'invalid') : 'safe',
+    status: reasons.length ? (requireGraph && nav.state === 'unknown' ? 'pending' : 'invalid') :
+      (requireGraph ? 'safe' : 'partial'),
     reasons,
     score: reasons.length ? Math.min(score, 49) : score,
     metrics: { distance: d, height, playerExits, botExits, playerCover, botCover,
