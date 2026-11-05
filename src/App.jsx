@@ -2,12 +2,15 @@ import { Suspense, useEffect, useRef } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { PointerLockControls } from '@react-three/drei'
 import { Physics } from '@react-three/rapier'
-import { AUTO_ENTER, CFG, TRAINING } from './config'
+import { AUTO_ENTER, CFG, TRAINING, LEGACY_BOT, NAV_DISABLED } from './config'
 import { live, refs, useGame } from './store'
 import GameMap from './game/GameMap'
 import Player from './game/Player'
 import WeaponSystem from './game/WeaponSystem'
 import Bot from './game/Bot'
+import LegacyBot from './game/LegacyBot'
+import NavigationSystem from './game/NavigationSystem'
+import NavDebug from './game/NavDebug'
 import Enemies from './game/Enemies'
 import Match from './game/Match'
 import Impacts from './game/Impacts'
@@ -61,10 +64,12 @@ export default function App() {
           {/* 실행 순서 중요: Player(카메라 이동) → WeaponSystem(총기) → Bot/Match */}
           <Physics gravity={[0, CFG.gravity, 0]} timeStep="vary">
             <GameMap />
+            {!NAV_DISABLED && !LEGACY_BOT && <NavigationSystem />}
             <Player />
             <WeaponSystem />
-            {TRAINING ? <Enemies /> : <Bot />}
+            {TRAINING ? <Enemies /> : LEGACY_BOT ? <LegacyBot /> : <Bot />}
             <Match />
+            <NavDebug />
           </Physics>
         </Suspense>
         <Impacts />
