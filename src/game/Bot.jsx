@@ -260,7 +260,7 @@ export default function Bot() {
         // 맞으면 즉시 플레이어를 인지
         if (!st.seen) { st.seen = true; st.seenAt = now() - 0.3 }
         const target = refs.playerBody?.translation()
-        if (target) { st.lastKnown = { x: target.x, z: target.z }; st.investigateUntil = now() + 5 }
+        if (target) { st.lastKnown = { x: target.x, y: target.y, z: target.z }; st.investigateUntil = now() + 5 }
         st.lastSeen = now()
         if (st.hp === 0) {
           st.dead = true
@@ -283,6 +283,7 @@ export default function Bot() {
       const uncertainty = Math.min(kind === 'gunshot' ? 2.6 : 5, 0.6 + distance * 0.09)
       st.lastKnown = {
         x: position[0] + rand(-uncertainty, uncertainty),
+        y: position[1],
         z: position[2] + rand(-uncertainty, uncertainty),
       }
       st.heardAt = time
@@ -355,6 +356,34 @@ export default function Bot() {
     return h ? h.timeOfImpact : len
   }
 
+  // Navigation graph plans around full-height walls and through walkable stair
+  // links. Only the LAST seen/heard position is supplied; never the live player
+  // coordinates when the bot has no line of sight.
+  const nextNavWaypoint = (position, goal, time) => {
+    const nav = refs.navigation
+    if (!nav || !goal) return null
+    const st = S.current
+    const target = { x: goal.x, y: goal.y ?? position.y, z: goal.z }
+    const moved = !st.navGoal ||
+      Math.hypot(target.x - st.navGoal.x, target.z - st.navGoal.z) > 2.2 ||
+      Math.abs(target.y - st.navGoal.y) > 0.9
+    if (moved || time >= st.navRepath || !st.navPath.length) {
+      const path = nav.route(position, target)
+      st.navPath = path?.points || []
+      st.navGoal = target
+      st.navIndex = Math.min(1, Math.max(0, st.navPath.length - 1))
+      st.navRepath = time + (st.navPath.length ? 1.3 : 1.0)
+    }
+    while (st.navIndex < st.navPath.length - 1) {
+      const w = st.navPath[st.navIndex]
+      if (Math.hypot(w.x - position.x, w.z - position.z) > 0.92) break
+      st.navIndex++
+    }
+    const step = st.navPath[st.navIndex]
+    if (!step || Math.hypot(step.x - position.x, step.z - position.z) < 0.35) return null
+    return step
+  }
+
   // Find a patrol point on the SAME collision floor with a mostly clear short approach.
   // This is deliberately local steering, not a claim of full multi-floor pathfinding.
   const choosePatrol = (p) => {
@@ -371,7 +400,7 @@ export default function Bot() {
       if (!ground || ground.normal.y < 0.72) continue
       const floorY = ray.origin.y - ground.timeOfImpact
       if (Math.abs(floorY - (p.y - CFG.capsuleHalfHeight - CFG.capsuleRadius)) > 0.55) continue
-      return { x, z }
+      return { x, y: floorY + CFG.capsuleHalfHeight + CFG.capsuleRadius, z }
     }
     return null
   }
@@ -398,7 +427,7 @@ export default function Bot() {
       if (!floor || floor.normal.y < 0.72) continue
       const floorY = ray.origin.y - floor.timeOfImpact
       if (Math.abs(floorY - (p.y - CFG.capsuleHalfHeight - CFG.capsuleRadius)) > 0.55) continue
-      if (r < bestD) { bestD = r; best = { x: cx, z: cz } }
+      if (r < bestD) { bestD = r; best = { x: cx, y: floorY + CFG.capsuleHalfHeight + CFG.capsuleRadius, z: cz } }
     }
     return best
   }
@@ -560,6 +589,23 @@ export default function Bot() {
           if (cfg.brake && canShoot && (st.burstLeft > 0 || t >= st.restUntil)) spd = 0
           else if (!cfg.brake && st.burstLeft > 0) spd *= 0.6
         }
+      }
+
+      // Keep the same tactical state and weapon logic; replace only the
+      // movement direction when a collision-derived route is available.
+      if (navigationGoal && spd > 0) {
+        const waypoint = nextNavWaypoint(p, navigationGoal, t)
+        if (waypoint) {
+          const nx = waypoint.x - p.x, nz = waypoint.z - p.z
+          const length = Math.hypot(nx, nz)
+          if (length > 0.05) {
+            dirx = nx / length
+            dirz = nz / length
+          }
+        }
+      } else if (st.los) {
+        st.navPath = []
+        refs.navigation && (refs.navigation.path = [])
       }
 
       // ── 낮은 장애물 점프 / 벽 회피 / 끼임 탈출 ──
