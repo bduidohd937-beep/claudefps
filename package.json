@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node --test tests/economy.test.mjs tests/store.economy.test.mjs tests/weapon-expansion.test.mjs tests/map-ai.test.mjs tests/spawn-audio.test.mjs tests/movement.test.mjs tests/movement-spawn-core.test.mjs tests/navigation.test.mjs",
+    "test": "node --test tests/economy.test.mjs tests/store.economy.test.mjs tests/weapon-expansion.test.mjs tests/map-ai.test.mjs tests/spawn-audio.test.mjs tests/movement.test.mjs tests/movement-spawn-core.test.mjs tests/navigation.test.mjs tests/spawn-v5.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
