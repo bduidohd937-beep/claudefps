@@ -14,3 +14,12 @@ export function shouldStep({rise, forwardBlocked, upperClear, stableLanding, hea
 export function isNewJump(held, previouslyHeld, active = true) {
   return !!active && !!held && !previouslyHeld
 }
+
+export const NATIVE_CONTROLLER = Object.freeze({
+  offset: 0.02,
+  stepHeight: 0.38,
+  minimumStepWidth: 0.18,
+  groundSnap: 0.27,
+  climbSlopeDegrees: 50,
+  slideSlopeDegrees: 56,
+})
