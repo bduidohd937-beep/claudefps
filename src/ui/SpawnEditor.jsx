@@ -182,7 +182,7 @@ export default function SpawnEditor() {
         {audit && <div role="status" aria-live="polite" style={{ marginTop: 9,
           padding: 9, borderRadius: 4, background: audit.ok ? '#193a2a' : '#443123',
           border: '1px solid ' + (audit.ok ? '#4eaa7b' : '#b9874d') }}>
-          <strong>{audit.ok ? '통과' : audit.status === 'pending' ? '경로 탐색 대기' : '부적합'} · {audit.score}/100</strong>
+          <strong>{audit.status === 'partial' ? '물리 검사만 통과' : audit.ok ? '연결성 포함 통과' : audit.status === 'pending' ? '경로 탐색 대기' : '부적합'} · {audit.score}/100</strong>
           {audit.metrics && <div>시작 거리 {audit.metrics.distance.toFixed(1)}m ·
             고도 차 {audit.metrics.height.toFixed(1)}m ·
             탈출 방향 {audit.metrics.playerExits}/{audit.metrics.botExits} ·
