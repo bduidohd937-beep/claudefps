@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useRapier } from '@react-three/rapier'
-import { CFG, MATCH, SPAWNS, TRAINING, AUTO_ENTER, START_LEVEL, DYNAMIC_SPAWNS, saveSpawn, SPAWN_MANUAL } from '../config'
+import { CFG, MATCH, SPAWNS, TRAINING, AUTO_ENTER, START_LEVEL, DYNAMIC_SPAWNS, saveSpawn, SPAWN_MANUAL, ACTIVE_MAP, NAV_DISABLED, SPAWN_NAV_DISABLED } from '../config'
 import { live, refs, useGame } from '../store'
 import { enemies } from '../enemies'
 import { cam, on } from '../fx'
-import { exposedAtCloseRange, exposedWithoutCover, spawnScore, spawnHasEscape, fairSpawnPair } from './SpawnSafety.js'
+import { exposedAtCloseRange, exposedWithoutCover, spawnScore, spawnHasEscape } from './SpawnSafety.js'
+import { graphConnection, evaluateDuelSpawn } from './SpawnV5.js'
 
 // 라운드 진행 로직: 라운드 리셋, 구매 타이머, 승패 판정, 킬 보상, 스폰 저장 단축키
 export default function Match() {
   const camera = useThree((s) => s.camera)
   const { world, rapier } = useRapier()
   const lastSpawns = useRef({ player: null, bot: null })
+  const nextSpawnRetry = useRef(0)
 
   const findSafeSpawn = useMemo(() => {
     const ray = new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 })
@@ -66,6 +68,77 @@ export default function Match() {
         refs.mapBounds.max[2] - refs.mapBounds.min[2]) : 20
       return spawnHasEscape(access.supported, access.exits, span > 25 ? 2 : 1)
     }
+    const pointProfiles = new Map()
+    // F6 audit and automatic round selection share identical safety checks.
+    // Do not claim a NavGraph connection when the target cells are unscanned.
+    const inspectPair = (player, bot) => {
+      const bounds = refs.mapBounds
+      const span = bounds ? Math.min(bounds.max[0] - bounds.min[0],
+        bounds.max[2] - bounds.min[2]) : 20
+      const minDistance = Math.min(CFG.spawnMinDistance, Math.max(2.5, span * 0.33))
+      const profile = (point) => {
+        if (!point || !point.every(Number.isFinite)) return { valid: false, exits: 0, cover: 0 }
+        const key = point.map((v) => v.toFixed(2)).join(':')
+        const cached = pointProfiles.get(key)
+        if (cached) return cached
+        const top = point[1] + 1.0
+        const hit = cast([point[0], top, point[2]], [0, -1, 0], 2.5, true)
+        if (!hit || hit.normal.y < 0.72) return { valid: false, exits: 0, cover: 0 }
+        const groundY = top - hit.timeOfImpact
+        const centerY = groundY + CFG.capsuleHalfHeight + CFG.capsuleRadius + 0.05
+        if (Math.abs(centerY - point[1]) > 0.5 ||
+          !hasClearance(point[0], groundY, point[2])) return { valid: false, exits: 0, cover: 0 }
+        const quality = spawnQuality(point[0], groundY, point[2])
+        const valid = spawnHasEscape(quality.supported, quality.exits, span > 25 ? 2 : 1)
+        let cover = 0
+        const dirs = [[1,0],[-1,0],[0,1],[0,-1]]
+        for (const [dx, dz] of dirs) {
+          if (cast([point[0], centerY + 0.3, point[2]], [dx, 0, dz], 4)) cover++
+        }
+        const result = { valid, exits: quality.exits, cover }
+        if (pointProfiles.size > 800) pointProfiles.clear()
+        pointProfiles.set(key, result)
+        return result
+      }
+      const a = profile(player), b = profile(bot)
+      let lineOfSight = true
+      if (a.valid && b.valid) {
+        const dx = bot[0] - player[0], dy = bot[1] - player[1], dz = bot[2] - player[2]
+        const distance = Math.hypot(dx, dy, dz)
+        if (distance > 0.75) {
+          const clear = (from, to) => {
+            const vx = to[0] - from[0], vy = to[1] - from[1], vz = to[2] - from[2]
+            const len = Math.hypot(vx, vy, vz)
+            return !cast(from, [vx / len, vy / len, vz / len], len - 0.65)
+          }
+          lineOfSight = clear([player[0], player[1] + 0.45, player[2]],
+            [bot[0], bot[1] + 0.45, bot[2]]) ||
+            clear([bot[0], bot[1] + 0.45, bot[2]],
+              [player[0], player[1] + 0.45, player[2]])
+        }
+      }
+      const requireGraph = !NAV_DISABLED && !SPAWN_NAV_DISABLED && ACTIVE_MAP.key !== 'arena'
+      const physicallyValid = evaluateDuelSpawn({
+        player, bot, span, playerExits: a.exits, botExits: b.exits,
+        playerCover: a.cover, botCover: b.cover,
+        playerValid: a.valid, botValid: b.valid,
+        lineOfSight, requireGraph: false, minDistance,
+      }).ok
+      const nav = requireGraph && physicallyValid
+        ? graphConnection(refs.navigation, player, bot)
+        : { state: requireGraph ? 'skipped' : 'disabled', reason: requireGraph
+          ? '다른 물리·거리 검사를 통과하지 못함' : ACTIVE_MAP.key === 'arena'
+          ? '내장 아레나에서는 지면·거리 검사를 우선함' :
+          SPAWN_NAV_DISABLED ? '스폰 내비게이션 검사만 비활성화됨' : 'AI 내비게이션이 비활성화됨' }
+      const result = evaluateDuelSpawn({
+        player, bot, span, playerExits: a.exits, botExits: b.exits,
+        playerCover: a.cover, botCover: b.cover,
+        playerValid: a.valid, botValid: b.valid, lineOfSight,
+        nav, requireGraph, minDistance,
+      })
+      return { ...result, nav, player: a, bot: b }
+    }
+
     const resolve = (requested, avoid = null, maxRing = 8, minimumDistance = CFG.spawnMinDistance) => {
       // 요청한 좌표가 허공이면 맵 실제 영역 중앙에서도 바닥을 검색.
       const bounds = refs.mapBounds
@@ -81,8 +154,9 @@ export default function Match() {
           const x = center[0] + Math.cos(angle) * ring * 2
           const z = center[2] + Math.sin(angle) * ring * 2
           if (avoid && Math.hypot(x - avoid[0], z - avoid[2]) < minimumDistance) continue
-          const top = Math.max(center[1] + 10, CFG.spawnProbeTop, (bounds?.max[1] ?? 0) + 10)
-          const depth = Math.max(CFG.spawnProbeDepth, top - (bounds?.min[1] ?? -20) + 20)
+          // Probe near the requested playable elevation first: global high casts often hit rooftops.
+          const top = center[1] + 2.5
+          const depth = Math.max(14, top - (bounds?.min[1] ?? -20) + 5)
           const floor = cast([x, top, z], [0, -1, 0], depth, true)
           if (!floor || floor.normal.y < 0.72) continue
           const groundY = top - floor.timeOfImpact
@@ -113,8 +187,8 @@ export default function Match() {
     // Collect collision-valid same-level locations once per anchor. Reuse the
     // validated pool between rounds rather than casting thousands of rays each time.
     const groundPools = new Map()
-    resolve.randomNear = (base, avoid, previous, radius, minimumDistance) => {
-      if (!base) return null
+    resolve.randomNear = (base, avoid, previous, radius, minimumDistance, collect = false) => {
+      if (!base) return collect ? [] : null
       const key = base.map((n) => n.toFixed(1)).join(':') + ':' + radius.toFixed(1)
       let pool = groundPools.get(key)
       if (!pool) {
@@ -169,24 +243,17 @@ export default function Match() {
         valid.push({ pos: candidate.pos, score })
       }
       valid.sort((a, b) => b.score - a.score)
+      if (collect) return valid.slice(0, 10).map((entry) => entry.pos)
       return valid.length ? valid[Math.floor(Math.random() * Math.min(valid.length, 7))].pos : null
     }
-    resolve.fairPair = (player, bot, mapSpan, minimumDistance) => {
-      if (!player || !bot) return false
-      const dx = bot[0] - player[0], dy = bot[1] - player[1], dz = bot[2] - player[2]
-      const distance = Math.hypot(dx, dy, dz)
-      if (distance < 0.01) return false
-      const direction = [dx / distance, dy / distance, dz / distance]
-      const blocked = !!cast([player[0], player[1] + 0.45, player[2]],
-        direction, Math.max(0, distance - 0.6))
-      return fairSpawnPair({ distance, blocked, mapSpan, minDistance: minimumDistance })
-    }
-        return resolve
+    resolve.inspectPair = inspectPair
+    return resolve
   }, [world, rapier])
 
   useEffect(() => {
     // 라운드 시작 시 플레이어/봇 위치 초기화 + 서로 마주보게 설정
     refs.snapSpawn = (pos) => findSafeSpawn(pos, null, 1)
+    refs.inspectSpawnPair = (player, bot) => findSafeSpawn.inspectPair(player, bot)
     refs.validateSpawn = (kind, point) => {
       const opposite = kind === 'player' ? refs.botBody : refs.playerBody
       const at = opposite?.translation()
@@ -205,7 +272,15 @@ export default function Match() {
       if (!anchor) return null
       const avoid = other ? [other.x, other.y, other.z] : null
       const previous = ownNow ? [ownNow.x, ownNow.y, ownNow.z] : null
-      return findSafeSpawn.randomNear(anchor, avoid, previous, radius, Math.min(8, Math.max(3, span * 0.25)))
+      const options = findSafeSpawn.randomNear(anchor, avoid, previous,
+        radius, Math.min(8, Math.max(3, span * 0.25)), true)
+      for (const p of options) {
+        const report = kind === 'player'
+          ? findSafeSpawn.inspectPair(p, avoid)
+          : findSafeSpawn.inspectPair(avoid, p)
+        if (report.ok) return p
+      }
+      return null
     }
     refs.resetRound = () => {
       const bounds = refs.mapBounds
@@ -220,41 +295,76 @@ export default function Match() {
       const baseBot = SPAWN_MANUAL.bot
         ? findSafeSpawn.at(SPAWNS.bot, basePlayer, minimumDistance)
         : findSafeSpawn(SPAWNS.bot, basePlayer, 8, minimumDistance)
+      if (!TRAINING && !NAV_DISABLED && !SPAWN_NAV_DISABLED && ACTIVE_MAP.key !== 'arena' && baseBot) {
+        const nav = refs.navigation
+        if (nav && (!nav.anchor ||
+          Math.hypot(baseBot[0] - nav.anchor.x, baseBot[2] - nav.anchor.z) > 14 ||
+          Math.abs(baseBot[1] - nav.anchor.y) > 1.3)) {
+          nav.reset({ x: baseBot[0], y: baseBot[1], z: baseBot[2] })
+        }
+      }
       let p = basePlayer
       let bp = baseBot
-
-      // Keep both team spawns on checked walkable floors. Never fall back to a
-      // roof-top or arbitrary sky position when no safe starting pair exists.
-      if (DYNAMIC_SPAWNS && !TRAINING && p && bp) {
-        let chosen = null
-        for (let attempt = 0; attempt < 3; attempt++) {
-          const candidatePlayer = findSafeSpawn.randomNear(
-            basePlayer, baseBot, lastSpawns.current.player, radius, minimumDistance,
-          ) || basePlayer
-          const candidateBot = findSafeSpawn.randomNear(
-            baseBot, candidatePlayer, lastSpawns.current.bot, radius, minimumDistance,
-          ) || baseBot
-          if (findSafeSpawn.fairPair(candidatePlayer, candidateBot, span, minimumDistance)) {
-            chosen = [candidatePlayer, candidateBot]
-            break
+      let audit = null
+      if (!TRAINING) {
+        // Evaluate PAIRS together, not one independently selected point at a time.
+        // Old sky/roof fallback is deliberately absent. Unscanned NavGraph areas
+        // remain pending, never assumed connected.
+        const players = basePlayer ? [basePlayer] : []
+        const bots = baseBot ? [baseBot] : []
+        if (DYNAMIC_SPAWNS && basePlayer && baseBot) {
+          players.push(...findSafeSpawn.randomNear(basePlayer, baseBot,
+            lastSpawns.current.player, radius, minimumDistance, true).slice(0, 6))
+          bots.push(...findSafeSpawn.randomNear(baseBot, basePlayer,
+            lastSpawns.current.bot, radius, minimumDistance, true).slice(0, 6))
+        }
+        let best = null
+        let pending = null
+        let rejected = null
+        for (const candidatePlayer of players) {
+          for (const candidateBot of bots) {
+            const result = findSafeSpawn.inspectPair(candidatePlayer, candidateBot)
+            if (result.status === 'pending' && !pending) pending = result
+            if (!rejected || result.score > rejected.score) rejected = result
+            if (!result.ok) continue
+            const repeats = (lastSpawns.current.player &&
+              Math.hypot(candidatePlayer[0] - lastSpawns.current.player[0],
+                candidatePlayer[2] - lastSpawns.current.player[2]) < 3) ||
+              (lastSpawns.current.bot &&
+                Math.hypot(candidateBot[0] - lastSpawns.current.bot[0],
+                  candidateBot[2] - lastSpawns.current.bot[2]) < 3)
+            const score = result.score - (repeats ? 14 : 0) + Math.random() * 7
+            if (!best || score > best.score) {
+              best = { p: candidatePlayer, bp: candidateBot, audit: result, score }
+            }
           }
         }
-        if (chosen) [p, bp] = chosen
-      }
-      if (!TRAINING && !findSafeSpawn.fairPair(p, bp, span, minimumDistance)) {
-        console.warn('[spawn] No fair playable pair. Open F6 and calibrate both spawn points.')
-        useGame.getState().setSpawnEditorOpen(true)
-        refs.safePlayerSpawn = basePlayer
-        refs.safeBotSpawn = baseBot
-        return false
+        if (best) {
+          p = best.p; bp = best.bp; audit = best.audit
+        } else {
+          audit = pending || rejected || {
+            ok: false, status: 'invalid', score: 0,
+            reasons: ['검증 가능한 두 스폰 후보를 찾지 못함'],
+          }
+          refs.lastSpawnAudit = audit
+          useGame.setState({ spawnAudit: audit })
+          console.warn('[spawn V5] fair pair unavailable', audit.reasons)
+          useGame.getState().setSpawnEditorOpen(true)
+          refs.safePlayerSpawn = basePlayer
+          refs.safeBotSpawn = baseBot
+          return false
+        }
       }
       if (!p || (!TRAINING && !bp)) {
-        console.warn('[spawn] No valid floor/capsule clearance. Open F6 to calibrate spawns.')
+        audit = audit || { ok: false, status: 'invalid', score: 0,
+          reasons: ['유효한 지면을 찾지 못함'] }
+        refs.lastSpawnAudit = audit
+        useGame.setState({ spawnAudit: audit })
         useGame.getState().setSpawnEditorOpen(true)
-        refs.safePlayerSpawn = basePlayer
-        refs.safeBotSpawn = baseBot
         return false
       }
+      refs.lastSpawnAudit = audit
+      useGame.setState({ spawnAudit: audit })
       const playerSpawn = p
       const botSpawn = bp
       if (p && bp) {
@@ -331,6 +441,7 @@ export default function Match() {
       refs.snapSpawn = null
       refs.validateSpawn = null
       refs.randomSafeSpawn = null
+      refs.inspectSpawnPair = null
     }
   }, [camera, findSafeSpawn])
 
@@ -343,6 +454,15 @@ export default function Match() {
         st.startMatch(START_LEVEL)
       }
       return
+    }
+    // The graph is incremental: retry an initially unscanned map after more
+    // walkable cells have been explored. Invalid geometry still requires F6 edits.
+    if (st.spawnError && st.spawnAudit?.status === 'pending' && st.spawnEditorOpen) {
+      const clock = performance.now() / 1000
+      if (clock >= nextSpawnRetry.current) {
+        nextSpawnRetry.current = clock + 2.5
+        st.retrySpawn()
+      }
     }
     if (TRAINING || st.spawnEditorOpen) return
     const now = performance.now() / 1000

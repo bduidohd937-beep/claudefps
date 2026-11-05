@@ -33,6 +33,7 @@ export const useGame = create((set, get) => ({
   toggleNavDebug: () => set((state) => ({ navDebug: !state.navDebug })),
   spawnEditorOpen: false,
   spawnError: null,
+  spawnAudit: null,
   tunerOpen: false,
   setTunerOpen: (open) => {
     live.tuner = open
@@ -155,7 +156,7 @@ export const useGame = create((set, get) => ({
       money: MATCH.startMoney, lossStreak: 0, botEconomy: initialBotEconomy(),
       spawnProtectionUntil: 0, hp: 100, armor: 0,
       owned: initialOwned(), ammo: initialAmmo(), weapon: 'pistol',
-      matchOver: null, roundBanner: null, spawnError: null,
+      matchOver: null, roundBanner: null, spawnError: null, spawnAudit: null,
     })
     get().beginRound()
   },
@@ -170,8 +171,11 @@ export const useGame = create((set, get) => ({
     live.reloading = false
     if (!TRAINING && spawnsReady === false) {
       live.buyEnd = Number.POSITIVE_INFINITY
+      const pending = get().spawnAudit?.status === 'pending'
       set({ phase: 'buy', shopOpen: false, spawnEditorOpen: true,
-        spawnError: '이 전장에서 공정하고 안전한 시작 위치를 찾지 못했어. F6에서 양쪽 스폰을 조정하고 다시 검증해 줘.' })
+        spawnError: pending
+          ? '맵의 이동 가능 경로를 조사 중이야. 경로가 확인되면 자동으로 재검사해. 계속 실패하면 F6에서 위치를 조정해 줘.'
+          : '두 스폰을 안전하게 연결할 수 없어. F6에 표시된 탈락 사유를 확인하고 위치를 다시 지정해 줘.' })
       refs.unlock?.()
       return
     }
@@ -336,6 +340,8 @@ export const refs = {
   playerBody: null,
   botBody: null,
   navigation: null,
+  inspectSpawnPair: null,
+  lastSpawnAudit: null,
   teleportPlayer: null,
   snapSpawn: null,
   mapBounds: null,
