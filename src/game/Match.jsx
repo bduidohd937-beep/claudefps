@@ -185,7 +185,17 @@ export default function Match() {
       const previous = ownNow ? [ownNow.x, ownNow.y, ownNow.z] : null
       return findSafeSpawn.randomNear(anchor, avoid, previous, radius, Math.min(8, Math.max(3, span * 0.25)))
     }
-    refs.resetRound = () => {
+    const fairPair = (player, bot, mapSpan, minimumDistance) => {
+      if (!player || !bot) return false
+      const dx = bot[0] - player[0], dy = bot[1] - player[1], dz = bot[2] - player[2]
+      const distance = Math.hypot(dx, dy, dz)
+      if (distance < 0.01) return false
+      const direction = [dx / distance, dy / distance, dz / distance]
+      const blocked = !!cast([player[0], player[1] + 0.45, player[2]],
+        direction, Math.max(0, distance - 0.6))
+      return fairSpawnPair({ distance, blocked, mapSpan, minDistance: minimumDistance })
+    }
+        refs.resetRound = () => {
       const bounds = refs.mapBounds
       const span = bounds
         ? Math.min(bounds.max[0] - bounds.min[0], bounds.max[2] - bounds.min[2])
@@ -201,22 +211,40 @@ export default function Match() {
       let p = basePlayer
       let bp = baseBot
 
-      // 고정 스폰은 언제든 로비의 옵션에서 선택할 수 있음.
-      // F6 수동 스폰은 매번 새로 검색할 중심점으로 유지됨.
+      // Keep both team spawns on checked walkable floors. Never fall back to a
+      // roof-top or arbitrary sky position when no safe starting pair exists.
       if (DYNAMIC_SPAWNS && !TRAINING && p && bp) {
-        const shuffledPlayer = findSafeSpawn.randomNear(
-          p, bp, lastSpawns.current.player, radius, minimumDistance,
-        )
-        if (shuffledPlayer) p = shuffledPlayer
-        const shuffledBot = findSafeSpawn.randomNear(
-          bp, p, lastSpawns.current.bot, radius, minimumDistance,
-        )
-        if (shuffledBot) bp = shuffledBot
+        let chosen = null
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const candidatePlayer = findSafeSpawn.randomNear(
+            basePlayer, baseBot, lastSpawns.current.player, radius, minimumDistance,
+          ) || basePlayer
+          const candidateBot = findSafeSpawn.randomNear(
+            baseBot, candidatePlayer, lastSpawns.current.bot, radius, minimumDistance,
+          ) || baseBot
+          if (fairPair(candidatePlayer, candidateBot, span, minimumDistance)) {
+            chosen = [candidatePlayer, candidateBot]
+            break
+          }
+        }
+        if (chosen) [p, bp] = chosen
       }
-      const playerSpawn = p || (bounds
-        ? [bounds.center[0], bounds.max[1] + 4, bounds.center[2]]
-        : [...SPAWNS.player])
-      const botSpawn = bp || [...SPAWNS.bot]
+      if (!TRAINING && !fairPair(p, bp, span, minimumDistance)) {
+        console.warn('[spawn] No fair playable pair. Open F6 and calibrate both spawn points.')
+        useGame.getState().setSpawnEditorOpen(true)
+        refs.safePlayerSpawn = basePlayer
+        refs.safeBotSpawn = baseBot
+        return false
+      }
+      if (!p || (!TRAINING && !bp)) {
+        console.warn('[spawn] No valid floor/capsule clearance. Open F6 to calibrate spawns.')
+        useGame.getState().setSpawnEditorOpen(true)
+        refs.safePlayerSpawn = basePlayer
+        refs.safeBotSpawn = baseBot
+        return false
+      }
+      const playerSpawn = p
+      const botSpawn = bp
       if (p && bp) {
         lastSpawns.current = { player: [...p], bot: [...bp] }
       }
@@ -226,7 +254,7 @@ export default function Match() {
           bot: bp.map((x) => Number(x.toFixed(2))),
         })
       }
-      if (!p || (!TRAINING && !bp)) useGame.getState().setSpawnEditorOpen(true)
+      refs.resetPlayerMotion?.()
       refs.safePlayerSpawn = p
       refs.safeBotSpawn = bp
       if (p && p.some((value, i) => Math.abs(value - SPAWNS.player[i]) > 0.1)) {
@@ -238,6 +266,9 @@ export default function Match() {
       const rb = refs.playerBody
       if (rb) {
         rb.setTranslation({ x: playerSpawn[0], y: playerSpawn[1], z: playerSpawn[2] }, true)
+        if (typeof rb.setNextKinematicTranslation === 'function') {
+          rb.setNextKinematicTranslation({ x: playerSpawn[0], y: playerSpawn[1], z: playerSpawn[2] })
+        }
         rb.setLinvel({ x: 0, y: 0, z: 0 }, true)
       }
       camera.position.set(playerSpawn[0], playerSpawn[1] + 0.75, playerSpawn[2])
@@ -254,6 +285,7 @@ export default function Match() {
       cam.recoil = 0; cam.shake = 0; cam.flinchP = 0; cam.flinchY = 0
       live.fireSpread = 0
       refs.resetBot?.(botSpawn)
+      return true
     }
 
     // 개발용: F4 = 지금 위치를 플레이어 스폰으로 저장 / F3 = 봇 스폰으로 저장 (맵별로 기억됨)
