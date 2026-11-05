@@ -39,6 +39,8 @@ export default function SpawnEditor() {
   const [bot, setBot] = useState(() => toFields(SPAWNS.bot))
   const [bounds, setBounds] = useState(null)
   const [message, setMessage] = useState('')
+  const spawnError = useGame((s) => s.spawnError)
+  const retrySpawn = useGame((s) => s.retrySpawn)
 
   useEffect(() => {
     if (!open) return
@@ -126,6 +128,17 @@ export default function SpawnEditor() {
         <h2 style={{ fontSize: 20, margin: 0 }}>스폰 편집기 · F6</h2>
         <button style={btn} onClick={() => setOpen(false)}>닫기</button>
       </div>
+      {spawnError && (
+        <div role="alert" style={{ padding: 12, border: '1px solid #ffb65b',
+          borderRadius: 5, background: '#493321', margin: '12px 0', fontSize: 12, lineHeight: 1.6 }}>
+          <strong>안전 스폰을 찾지 못해 경기를 일시 중지했어.</strong>
+          <div>{spawnError}</div>
+          <button type="button" className="start" style={{ marginTop: 8 }}
+            onClick={() => {
+              if (!retrySpawn()) setMessage('아직 두 스폰이 안전하지 않아. 지면과 두 위치의 거리·엄폐를 확인해 줘.')
+            }}>저장한 스폰으로 안전 검사 후 경기 재개</button>
+        </div>
+      )}
       <p style={{ color: '#aeb7c1', fontSize: 12, margin: '8px 0 12px' }}>
         맵: {ACTIVE_MAP.key} · 편집하는 동안 중력·AI 활동 정지
       </p>
