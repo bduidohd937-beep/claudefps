@@ -8,6 +8,8 @@ import GameMap from './game/GameMap'
 import Player from './game/Player'
 import WeaponSystem from './game/WeaponSystem'
 import Bot from './game/Bot'
+import NavigationSystem from './game/NavigationSystem'
+import NavDebug from './game/NavDebug'
 import Enemies from './game/Enemies'
 import Match from './game/Match'
 import Impacts from './game/Impacts'
@@ -61,10 +63,12 @@ export default function App() {
           {/* 실행 순서 중요: Player(카메라 이동) → WeaponSystem(총기) → Bot/Match */}
           <Physics gravity={[0, CFG.gravity, 0]} timeStep="vary">
             <GameMap />
+            <NavigationSystem />
             <Player />
             <WeaponSystem />
             {TRAINING ? <Enemies /> : <Bot />}
             <Match />
+            <NavDebug />
           </Physics>
         </Suspense>
         <Impacts />
