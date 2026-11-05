@@ -366,10 +366,12 @@ export default function Match() {
             botZone: outcome.selected.botZone,
           }
         } else {
+          const nav = refs.navigation
+          const scanning = !!nav?.queue?.length && nav.graph.nodes.length < nav.maxNodes
           audit = outcome.pending || {
-            ok: false, status: 'invalid', score: 0,
-            reasons: [zones.length < 2
-              ? '이동 가능한 스폰 구역이 아직 충분히 생성되지 않음'
+            ok: false, status: scanning ? 'pending' : 'invalid', score: 0,
+            reasons: [scanning
+              ? '맵의 연결된 스폰 구역을 탐색 중이야. 탐색이 확장되면 자동으로 재검사할게.'
               : '검증된 스폰 구역 사이에서 공정한 위치 조합을 찾지 못함',
             ...outcome.rejectionCounts.map(([reason, count]) => `${reason} (거절 ${count}회)`)].slice(0, 7),
           }
