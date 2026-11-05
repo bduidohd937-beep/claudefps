@@ -278,7 +278,7 @@ export default function Match() {
       const rb = refs.playerBody
       if (rb) {
         rb.setTranslation({ x: playerSpawn[0], y: playerSpawn[1], z: playerSpawn[2] }, true)
-        if (typeof rb.setNextKinematicTranslation === 'function') {
+        if (typeof rb.isKinematic === 'function' && rb.isKinematic()) {
           rb.setNextKinematicTranslation({ x: playerSpawn[0], y: playerSpawn[1], z: playerSpawn[2] })
         }
         rb.setLinvel({ x: 0, y: 0, z: 0 }, true)
