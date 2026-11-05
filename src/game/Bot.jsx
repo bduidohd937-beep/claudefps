@@ -261,7 +261,7 @@ export default function Bot() {
     })
     const offNoise = on('combatNoise', ({ position, radius, kind }) => {
       const b = body.current
-      if (!b || st.dead || live.phase !== 'live' || !Array.isArray(position)) return
+      if (!b || st.dead || live.phase !== 'live' || now() < useGame.getState().spawnProtectionUntil || !Array.isArray(position)) return
       const p = b.translation()
       const distance = Math.hypot(p.x - position[0], p.y - position[1], p.z - position[2])
       const time = now()
