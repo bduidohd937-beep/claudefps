@@ -65,15 +65,38 @@ export function anchorZone(kind, pos) {
   }
 }
 
+export function diversifySpawnZones(zones, max = 22, separation = 9) {
+  if (!Array.isArray(zones)) return []
+  const anchors = zones.filter((z) => z.kind === 'anchor')
+  const ordinary = zones.filter((z) => z.kind !== 'anchor')
+  const spread = [...anchors]
+  const deferred = []
+  for (const zone of ordinary) {
+    if (spread.length >= max) break
+    if (spread.some((existing) => planar(existing.center, zone.center) < separation &&
+      Math.abs(existing.center[1] - zone.center[1]) < 2.5)) {
+      deferred.push(zone)
+      continue
+    }
+    spread.push(zone)
+  }
+  for (const zone of deferred) {
+    if (spread.length >= max) break
+    spread.push(zone)
+  }
+  return spread.slice(0, max)
+}
+
 export function selectSpawnZonePair(zones, inspectPair, {
   previous = null, maxChecks = 44, minSeparation = 8, maxRange = 115,
+  fixedPlayer = null, fixedBot = null, maxAnchorOffset = 12,
 } = {}) {
   if (!Array.isArray(zones) || typeof inspectPair !== 'function') {
     return { selected: null, pending: null, rejected: [], checked: 0 }
   }
   const pairs = []
   // At most two representative positions per zone, then validate each pair.
-  const usable = zones.slice(0, 26)
+  const usable = diversifySpawnZones(zones, 24, 10)
   for (let i = 0; i < usable.length; i++) {
     for (let j = i + 1; j < usable.length; j++) {
       const a = usable[i], b = usable[j]
@@ -92,6 +115,8 @@ export function selectSpawnZonePair(zones, inspectPair, {
         const pp = playerZone.samples.slice(0, 2)
         const bb = botZone.samples.slice(0, 2)
         for (const p of pp) for (const q of bb) {
+          if (fixedPlayer && planar(p, fixedPlayer) > maxAnchorOffset) continue
+          if (fixedBot && planar(q, fixedBot) > maxAnchorOffset) continue
           pairs.push({
             p, b: q, playerZone, botZone,
             priority: priority + (flip === 1 ? -0.04 : 0),
