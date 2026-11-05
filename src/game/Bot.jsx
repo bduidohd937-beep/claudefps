@@ -313,8 +313,11 @@ export default function Bot() {
         b.setTranslation(next, true)
         b.setNextKinematicTranslation(next)
         const nav = refs.navigation
-        if (nav && (!nav.anchor ||
-          Math.hypot(next.x - nav.anchor.x, next.z - nav.anchor.z) > 20)) nav.reset(next)
+        // A valid V6 spawn is already part of this verified graph. Moving the
+        // bot to another connected sector must NOT erase map-wide spawn zones.
+        const known = nav?.graph.closest(next, 2)
+        if (nav && (!known || Math.hypot(next.x - known.x, next.z - known.z) > 1.8 ||
+          Math.abs(next.y - known.y) > 0.9)) nav.reset(next)
       }
     }
     refs.teleportBot = (pos) => {
@@ -329,7 +332,10 @@ export default function Bot() {
         tmp.vertical = 0; tmp.grounded = false
         tmp.lastVX = 0; tmp.lastVY = 0; tmp.lastVZ = 0
         st.navGoal = null; st.navPath = []; st.navIndex = 0; st.navRepath = 0
-        refs.navigation?.reset(next)
+        const nav = refs.navigation
+        const known = nav?.graph.closest(next, 2)
+        if (nav && (!known || Math.hypot(next.x - known.x, next.z - known.z) > 1.8 ||
+          Math.abs(next.y - known.y) > 0.9)) nav.reset(next)
       }
       return true
     }
