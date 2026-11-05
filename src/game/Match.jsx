@@ -114,7 +114,8 @@ export default function Match() {
       const nav = requireGraph
         ? graphConnection(refs.navigation, player, bot)
         : { state: 'disabled', reason: ACTIVE_MAP.key === 'arena'
-          ? '내장 아레나에서는 지면·거리 검사를 우선함' : '사용자가 내비게이션을 비활성화함' }
+          ? '내장 아레나에서는 지면·거리 검사를 우선함' :
+          SPAWN_NAV_DISABLED ? '스폰 내비게이션 검사만 비활성화됨' : 'AI 내비게이션이 비활성화됨' }
       const result = evaluateDuelSpawn({
         player, bot, span, playerExits: a.exits, botExits: b.exits,
         playerCover: a.cover, botCover: b.cover,
