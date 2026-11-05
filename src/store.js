@@ -30,6 +30,7 @@ export const useGame = create((set, get) => ({
   // ----- 입력/설정 -----
   locked: false,
   spawnEditorOpen: false,
+  spawnError: null,
   tunerOpen: false,
   setTunerOpen: (open) => {
     live.tuner = open
@@ -152,7 +153,7 @@ export const useGame = create((set, get) => ({
       money: MATCH.startMoney, lossStreak: 0, botEconomy: initialBotEconomy(),
       spawnProtectionUntil: 0, hp: 100, armor: 0,
       owned: initialOwned(), ammo: initialAmmo(), weapon: 'pistol',
-      matchOver: null, roundBanner: null,
+      matchOver: null, roundBanner: null, spawnError: null,
     })
     get().beginRound()
   },
@@ -163,8 +164,16 @@ export const useGame = create((set, get) => ({
       ammo: refillAllAmmo(s.ammo),
       botEconomy: autoBuyBot({ ...s.botEconomy, ammo: refillAllAmmo(s.botEconomy.ammo) }, s.round),
     }))
-    refs.resetRound?.()
+    const spawnsReady = refs.resetRound?.()
     live.reloading = false
+    if (!TRAINING && spawnsReady === false) {
+      live.buyEnd = Number.POSITIVE_INFINITY
+      set({ phase: 'buy', shopOpen: false, spawnEditorOpen: true,
+        spawnError: '이 전장에서 공정하고 안전한 시작 위치를 찾지 못했어. F6에서 양쪽 스폰을 조정하고 다시 검증해 줘.' })
+      refs.unlock?.()
+      return
+    }
+    set({ spawnError: null })
     if (TRAINING) { set({ phase: 'live', shopOpen: false, hp: 100 }); return }
     live.buyEnd = now() + MATCH.buyTime
     live.roundTimeLeft = MATCH.roundTime
@@ -172,9 +181,19 @@ export const useGame = create((set, get) => ({
     refs.unlock?.()
   },
 
+  retrySpawn: () => {
+    if (!get().spawnError) return false
+    if (refs.resetRound?.() !== true) return false
+    live.buyEnd = now() + MATCH.buyTime
+    live.roundTimeLeft = MATCH.roundTime
+    set({ spawnError: null, spawnEditorOpen: false, shopOpen: true, phase: 'buy' })
+    refs.unlock?.()
+    return true
+  },
+
   // 구매 종료 → 교전 시작
   endBuy: () => {
-    if (get().phase !== 'buy') return
+    if (get().phase !== 'buy' || get().spawnError) return
     live.roundTimeLeft = MATCH.roundTime
     set({ phase: 'live', shopOpen: false, spawnProtectionUntil: now() + 2.5 })
   },
