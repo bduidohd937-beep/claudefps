@@ -40,8 +40,10 @@ export default function SpawnEditor() {
   const [bounds, setBounds] = useState(null)
   const [message, setMessage] = useState('')
   const [audit, setAudit] = useState(null)
+  const [zones, setZones] = useState([])
   const [scanInfo, setScanInfo] = useState({ nodes: 0, pending: 0 })
   const spawnError = useGame((s) => s.spawnError)
+  const zoneReport = useGame((s) => s.spawnZoneReport)
   const retrySpawn = useGame((s) => s.retrySpawn)
 
   useEffect(() => {
@@ -54,10 +56,13 @@ export default function SpawnEditor() {
   }, [open])
   useEffect(() => {
     if (!open) return
-    const refresh = () => setScanInfo({
-      nodes: refs.navigation?.graph.nodes.length ?? 0,
-      pending: refs.navigation?.queue.length ?? 0,
-    })
+    const refresh = () => {
+      setScanInfo({
+        nodes: refs.navigation?.graph.nodes.length ?? 0,
+        pending: refs.navigation?.queue.length ?? 0,
+      })
+      setZones(refs.getSpawnZones?.() || [])
+    }
     refresh()
     const interval = window.setInterval(refresh, 900)
     return () => window.clearInterval(interval)
@@ -175,7 +180,7 @@ export default function SpawnEditor() {
       </p>
       <div style={{ padding: 11, marginBottom: 12, border: '1px solid #466075',
         borderRadius: 6, background: '#17242c', fontSize: 12, lineHeight: 1.65 }}>
-        <strong>스폰 V5 안전도 검사</strong>
+        <strong>스폰 V6 · 구역 기반 공정성 검사</strong>
         <div>NavGraph: 탐색 지점 {scanInfo.nodes}개 · 남은 탐색 후보 {scanInfo.pending}개</div>
         <button type="button" style={{ ...btn, marginTop: 7, background: '#245b56' }}
           onClick={inspectPair}>입력된 플레이어·AI 스폰 조합 검사</button>
@@ -195,6 +200,61 @@ export default function SpawnEditor() {
           </div>
         </div>}
       </div>
+      <section aria-label="스폰 구역 현황" style={{ background: '#1a2229',
+        padding: 10, marginBottom: 12, border: '1px solid #536271',
+        borderRadius: 6, fontSize: 12, lineHeight: 1.6 }}>
+        <strong>맵 스폰 구역 현황</strong>
+        {zoneReport?.engine === 'v5' ? (
+          <div style={{ color: '#c5a67e' }}>V5 호환 모드 · {zoneReport.reason}</div>
+        ) : (
+          <>
+            <div>탐색된 구역: {zones.filter(z => z.kind === 'graph').length}곳
+              · 최근 검사 조합 {zoneReport?.checked ?? 0}개</div>
+            {zoneReport?.selected && (
+              <div style={{ color: '#9ae8ba', marginTop: 5 }}>
+                이번 라운드: 플레이어 {zoneReport.selected.playerZone}
+                {' / '}AI {zoneReport.selected.botZone}
+                {' · '}점수 {zoneReport.selected.score}/100
+              </div>
+            )}
+            {!!zoneReport?.rejectionCounts?.length && <details style={{ marginTop: 5 }}>
+              <summary style={{ cursor: 'pointer' }}>제외된 스폰 조합 사유</summary>
+              <ul style={{ margin: '4px 0', paddingLeft: 18 }}>
+                {zoneReport.rejectionCounts.map(([reason, count], i) =>
+                  <li key={i}>{reason} — {count}건</li>)}
+              </ul>
+            </details>}
+            <details style={{ marginTop: 8 }}>
+              <summary style={{ cursor: 'pointer' }}>검증된 이동 그래프의 구역 후보 보기 ({zones.length}곳)</summary>
+              <p style={{ color: '#b2c4d0', fontSize: 11, margin: '6px 0' }}>
+                구역 후보는 이동 그래프에서 수집했을 뿐이야.
+                실제 스폰으로 사용하려면 양쪽 조합 검사를 통과해야 해.
+              </p>
+              {zones.filter(z => z.kind === 'graph').slice(0, 14).map((z) => (
+                <div key={z.id} style={{ padding: '7px 0', borderBottom: '1px solid #344451' }}>
+                  <div><strong>{z.label}</strong>
+                    {' · '}연결 지점 {z.nodeCount}개
+                    {zoneReport?.selected?.playerZone === z.id && ' · 플레이어 선택됨'}
+                    {zoneReport?.selected?.botZone === z.id && ' · AI 선택됨'}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                    <button style={btn} onClick={() => {
+                      updateFields('player', z.samples[0])
+                      setMessage('플레이어 입력값에 구역 후보를 불러왔어. 쌍 검사 후 저장해 줘.')
+                    }}>플레이어 후보로</button>
+                    <button style={btn} onClick={() => {
+                      updateFields('bot', z.samples[0])
+                      setMessage('AI 입력값에 구역 후보를 불러왔어. 쌍 검사 후 저장해 줘.')
+                    }}>AI 후보로</button>
+                  </div>
+                </div>
+              ))}
+              {!zones.some(z => z.kind === 'graph') &&
+                <p>탐색된 구역이 아직 부족해. 맵의 이동 가능한 지점을 조사 중이야.</p>}
+            </details>
+          </>
+        )}
+      </section>
       {bounds && <details style={{ fontSize: 11, marginBottom: 12, background: '#242b32', padding: 10, borderRadius: 5 }}>
         <summary style={{ cursor: 'pointer' }}>맵 좌표 범위 보기</summary>
         <p>중심: {bounds.center.map(n => n.toFixed(1)).join(', ')}</p>
@@ -223,7 +283,7 @@ export default function SpawnEditor() {
       </p>
       <div style={{ fontSize: 11, lineHeight: 1.6, color: '#a4aeba' }}>
         랜덤 이동은 임시 미리보기야. 게임에 영구 적용하려면 각 캐릭터의 저장 버튼을 눌러.
-        맵 전체의 층간 경로까지 보장하는 기능은 아니야.
+        이동 가능 구역은 게임 중 점진적으로 확장돼. 모든 건물·층의 경로를 보장하지 않아.
       </div>
     </aside>
   )
