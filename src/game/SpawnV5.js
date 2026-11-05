@@ -68,6 +68,7 @@ export function evaluateDuelSpawn({
   if (wide && lineOfSight && d < SPAWN_V5.exposedLimit) reasons.push('상대가 시작하자마자 직접 보이는 위치')
   if (playerExits < (wide ? 2 : 1)) reasons.push('플레이어 스폰에서 이동 가능한 탈출 방향 부족')
   if (botExits < (wide ? 2 : 1)) reasons.push('AI 스폰에서 이동 가능한 탈출 방향 부족')
+  const physicalFailed = reasons.length > 0
   if (requireGraph) {
     if (nav.state !== 'connected') reasons.push(nav.reason || '내비게이션 경로 미확인')
     if (nav.state === 'connected' && (nav.distance > SPAWN_V5.maxRoute || nav.distance < limit ||
@@ -84,7 +85,7 @@ export function evaluateDuelSpawn({
   )))
   return {
     ok: reasons.length === 0,
-    status: reasons.length ? (requireGraph && nav.state === 'unknown' ? 'pending' : 'invalid') :
+    status: reasons.length ? (requireGraph && nav.state === 'unknown' && !physicalFailed ? 'pending' : 'invalid') :
       (requireGraph ? 'safe' : 'partial'),
     reasons,
     score: reasons.length ? Math.min(score, 49) : score,
