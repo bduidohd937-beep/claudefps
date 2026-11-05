@@ -207,6 +207,17 @@ export default function Bot() {
   const camera = useThree((s) => s.camera)
   const botWeapon = useGame((s) => s.botEconomy.weapon)
   const { world, rapier } = useRapier()
+  const motor = useMemo(() => {
+    const controller = world.createCharacterController(0.025)
+    controller.enableAutostep(0.38, 0.18, false)
+    controller.enableSnapToGround(0.27)
+    controller.setMaxSlopeClimbAngle(Math.PI * 50 / 180)
+    controller.setMinSlopeSlideAngle(Math.PI * 56 / 180)
+    return controller
+  }, [world])
+  useEffect(() => () => {
+    try { world.removeCharacterController(motor) } catch {}
+  }, [world, motor])
 
   const tmp = useMemo(() => ({
     losRay: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }),
@@ -214,6 +225,7 @@ export default function Bot() {
     groundRay: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 }),
     cameraRight: new THREE.Vector3(),
     footstepVariant: 0,
+    vertical: 0, grounded: false, lastVX: 0, lastVY: 0, lastVZ: 0,
     mid: new THREE.Vector3(),
     notBot: (c) => c.parent()?.handle !== body.current?.handle,
   }), [rapier])
@@ -227,6 +239,7 @@ export default function Bot() {
     lastKnown: null, heardAt: -9, investigateUntil: 0, nextHear: 0,
     patrolGoal: null, nextPatrol: 0, nextHop: 0, avoidSign: 0, avoidUntil: 0,
     nextFootstep: 0,
+    navGoal: null, navPath: [], navIndex: 0, navRepath: 0,
   })
 
   // 레지스트리 등록 (플레이어 사격 판정이 사용)
@@ -289,12 +302,15 @@ export default function Bot() {
         nextCover: 0, hurtAt: -9, speed: 0, stuckAt: 0, unstuckUntil: 0,
         flashUntil: 0, lastKnown: null, heardAt: -9, investigateUntil: 0,
         nextHear: 0, patrolGoal: null, nextPatrol: 0, nextHop: 0, avoidSign: 0, avoidUntil: 0,
-        nextFootstep: 0,
+        nextFootstep: 0, navGoal: null, navPath: [], navIndex: 0, navRepath: 0,
       })
+      tmp.vertical = 0; tmp.grounded = false
+      tmp.lastVX = 0; tmp.lastVY = 0; tmp.lastVZ = 0
       if (b) {
         b.setEnabled(true)
-        b.setTranslation({ x: pos[0], y: pos[1], z: pos[2] }, true)
-        b.setLinvel({ x: 0, y: 0, z: 0 }, true)
+        const next = { x: pos[0], y: pos[1], z: pos[2] }
+        b.setTranslation(next, true)
+        b.setNextKinematicTranslation(next)
       }
     }
     refs.teleportBot = (pos) => {
@@ -303,8 +319,9 @@ export default function Bot() {
       if (st.dead) {
         refs.resetBot?.(pos)
       } else {
-        b.setTranslation({ x: pos[0], y: pos[1], z: pos[2] }, true)
-        b.setLinvel({ x: 0, y: 0, z: 0 }, true)
+        const next = { x: pos[0], y: pos[1], z: pos[2] }
+        b.setTranslation(next, true)
+        b.setNextKinematicTranslation(next)
       }
       return true
     }
@@ -447,7 +464,8 @@ export default function Bot() {
     if (p.y < CFG.killY) {
       const s = refs.safeBotSpawn || SPAWNS.bot
       b.setTranslation({ x: s[0], y: s[1], z: s[2] }, true)
-      b.setLinvel({ x: 0, y: 0, z: 0 }, true)
+      b.setNextKinematicTranslation({ x: s[0], y: s[1], z: s[2] })
+      tmp.vertical = 0; tmp.grounded = false
       return
     }
     g.position.set(p.x, p.y - 0.8, p.z)
@@ -455,8 +473,9 @@ export default function Bot() {
     // 교전 중(포인터락 + live 단계)에만 행동. 일시정지/구매/상점 중에는 정지
     const active = !st.dead && live.phase === 'live' && live.locked && !live.dead && t >= game.spawnProtectionUntil
     const pp = refs.playerBody?.translation()
-    const v = b.linvel()
+    const v = { x: tmp.lastVX, y: tmp.lastVY, z: tmp.lastVZ }
     let dirx = 0, dirz = 0, spd = 0, hop = false
+    let navigationGoal = null
 
     if (active && pp) {
       const ex = p.x, ey = p.y + 0.7, ez = p.z
@@ -473,7 +492,7 @@ export default function Bot() {
       if (st.los) {
         if (!st.seen) { st.seen = true; st.seenAt = t }
         st.lastSeen = t
-        st.lastKnown = { x: pp.x, z: pp.z }
+        st.lastKnown = { x: pp.x, y: pp.y, z: pp.z }
         st.investigateUntil = t + 5
         st.patrolGoal = null
       } else if (st.seen && t - st.lastSeen > 0.55) {
@@ -488,7 +507,10 @@ export default function Bot() {
         const cx = st.coverPos.x - p.x, cz = st.coverPos.z - p.z
         const cd = Math.hypot(cx, cz)
         if (cd < 0.8 || t > st.coverUntil) { st.state = 'seek'; st.coverPos = null }
-        else { dirx = cx / cd; dirz = cz / cd; spd = cfg.speed * 1.15 }
+        else {
+          dirx = cx / cd; dirz = cz / cd; spd = cfg.speed * 1.15
+          navigationGoal = st.coverPos
+        }
       } else if (!st.los) {
         // Investigate the last visible/heard location, NOT the current player coordinates.
         let goal = investigationTarget({ visible: st.los, lastKnown: st.lastKnown,
@@ -508,6 +530,7 @@ export default function Bot() {
         }
         st.state = st.lastKnown && goal === st.lastKnown ? 'investigate' : 'patrol'
         if (goal) {
+          navigationGoal = goal
           const gx = goal.x - p.x, gz = goal.z - p.z
           const d = Math.hypot(gx, gz)
           if (d > 0.5) {
@@ -627,12 +650,30 @@ export default function Bot() {
       st.yaw += diff * (1 - Math.exp(-10 * dt))
     }
 
-    // 속도 적용 (비활성 시 정지)
+    // Rapier's capsule motor handles stairs and continuous wall collision.
+    // The old AI movement controller is preserved as LegacyBot for comparison.
     const f = 1 - Math.exp(-12 * dt)
     const vx = v.x + (dirx * spd - v.x) * f
     const vz = v.z + (dirz * spd - v.z) * f
-    if (!st.dead) b.setLinvel({ x: vx, y: hop ? CFG.jumpVelocity : v.y, z: vz }, true)
-    st.speed = Math.hypot(vx, vz)
+    if (!st.dead && dt > 0) {
+      if (hop && tmp.grounded) { tmp.vertical = CFG.jumpVelocity; tmp.grounded = false }
+      else tmp.vertical = Math.max(-45, tmp.vertical + CFG.gravity * dt)
+      const collider = b.collider(0)
+      if (collider) {
+        motor.computeColliderMovement(collider,
+          { x: vx * dt, y: tmp.vertical * dt, z: vz * dt })
+        const move = motor.computedMovement()
+        b.setNextKinematicTranslation({ x: p.x + move.x, y: p.y + move.y, z: p.z + move.z })
+        tmp.grounded = motor.computedGrounded()
+        if (tmp.grounded && tmp.vertical < 0) tmp.vertical = 0
+        tmp.lastVX = move.x / dt
+        tmp.lastVY = move.y / dt
+        tmp.lastVZ = move.z / dt
+      }
+    } else {
+      tmp.lastVX = 0; tmp.lastVY = 0; tmp.lastVZ = 0
+    }
+    st.speed = Math.hypot(tmp.lastVX, tmp.lastVZ)
 
     if (active && st.speed > 0.8 && Math.abs(v.y) < 0.3 && t >= st.nextFootstep) {
       const gait = st.state === 'investigate' && st.speed < 1.8 ? 'crouch'
@@ -689,7 +730,7 @@ export default function Bot() {
         linearDamping={0}
         canSleep={false}
         ccd
-        type="dynamic"
+        type="kinematicPosition"
       >
         <CapsuleCollider args={[CFG.capsuleHalfHeight, CFG.capsuleRadius]} friction={0} restitution={0} />
       </RigidBody>
